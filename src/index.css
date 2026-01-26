@@ -1,0 +1,24 @@
+/* ไฟล์ src/index.css */
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  display: block; /* สำคัญ: ยกเลิก flex เดิมของ Vite */
+  min-width: 320px;
+  min-height: 100vh;
+  width: 100vw; /* ให้กว้างเต็มจอ */
+  background-color: #f1f5f9; /* สีพื้นหลัง slate-100 */
+}
+
+#root {
+  width: 100%; /* ให้ App ขยายเต็ม */
+  max-width: none; /* ยกเลิกการจำกัดความกว้าง */
+  margin: 0;
+  padding: 0;
+  text-align: left; /* ยกเลิกการจัดกึ่งกลาง */
+}
