@@ -172,7 +172,7 @@ const RegistrationView = () => {
       <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-lg">
         <Check size={48} className="text-green-600" />
       </div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">ลงทะเบียนสำเร็จ!</h2>
+      <h2 className="text-2xl font-bold text-slate-800 mb-2"> ลงทะเบียนสำเร็จ!</h2>
       <p className="text-slate-500 mb-8">ขอบคุณที่สมัครงานกับ Eastern Labour<br/>เจ้าหน้าที่จะติดต่อกลับโดยเร็วที่สุด</p>
       <button onClick={() => window.location.reload()} className="text-indigo-600 font-medium hover:underline">ลงทะเบียนเพิ่ม</button>
     </div>
