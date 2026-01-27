@@ -1,9 +1,8 @@
 // @ts-nocheck
-
 import React, { useState, useEffect } from 'react';
 import liff from '@line/liff';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'; // ✅ เพิ่ม onAuthStateChanged
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, query, onSnapshot, orderBy, 
   serverTimestamp, doc, updateDoc, deleteDoc, where, setDoc, 
@@ -17,7 +16,7 @@ import {
   UserCheck, Smartphone, Send, Check, LogIn
 } from 'lucide-react';
 
-// --- ⚠️ IMPORTANT: Replace with your actual LIFF ID ---
+// --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
 const MY_LIFF_ID = "2008980414-aaHkCCCk"; 
 
 // --- Firebase Configuration ---
@@ -260,22 +259,18 @@ const RegistrationView = () => {
   const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
 
   useEffect(() => {
-    // แก้ไข: รอให้ Login สำเร็จก่อนค่อยดึงข้อมูล
     let unsubConfig = () => {};
 
     const authUnsub = onAuthStateChanged(auth, (user) => {
        if (user) {
-          // ดึง Config เมื่อ Login แล้ว
           unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
              if (doc.exists() && doc.data().skills) setSkillsList(doc.data().skills);
           });
        } else {
-          // ถ้ายังไม่ Login ให้ทำ Anonymous Login
           signInAnonymously(auth).catch(err => console.error("Auth Error:", err));
        }
     });
 
-    // LIFF Init
     const initLiff = async () => {
       try {
         await liff.init({ liffId: MY_LIFF_ID });
@@ -321,7 +316,7 @@ const RegistrationView = () => {
       });
       
       if (liff.isInClient()) {
-        await liff.sendMessages([{ type: 'text', text: `ได้รับใบสมัครของ ${formData.name} เรียบร้อยแล้วครับ` }]);
+        // await liff.sendMessages([{ type: 'text', text: `ได้รับใบสมัครเรียบร้อยแล้ว` }]); 
         liff.closeWindow();
       } else {
         setIsSuccess(true);
@@ -402,18 +397,22 @@ const AdminDashboard = () => {
   const [jobForm, setJobForm] = useState({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
 
   useEffect(() => {
-    // ✅ แก้ไข: รอให้ Login สำเร็จก่อนค่อยเริ่มดึงข้อมูล (Snapshot)
     let unsubWorkers = () => {};
     let unsubJobs = () => {};
     let unsubConfig = () => {};
 
     const authUnsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // --- 1. User Login แล้ว -> ดึงข้อมูลได้ ---
         setPermissionError(false);
         
-        unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker'), orderBy('registeredAt', 'desc')), 
-          (snap) => setWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() }))), 
+        // ⚠️ ลบ orderBy ออกเพื่อแก้ปัญหา Index Error (และเรียงข้อมูลใน Client แทน)
+        unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker')), 
+          (snap) => {
+             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+             // Client-side Sort (ใหม่สุดขึ้นก่อน)
+             data.sort((a, b) => (b.registeredAt?.seconds || 0) - (a.registeredAt?.seconds || 0));
+             setWorkers(data);
+          }, 
           (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
         );
 
@@ -427,7 +426,6 @@ const AdminDashboard = () => {
             setSkillsList(doc.data().skills || DEFAULT_SKILLS); 
             setCompaniesList(doc.data().companies || DEFAULT_COMPANIES); 
           } else { 
-            // Create default config if missing
             setDoc(doc(db, 'system_settings', 'config'), { skills: DEFAULT_SKILLS, companies: DEFAULT_COMPANIES }); 
             setSkillsList(DEFAULT_SKILLS); 
             setCompaniesList(DEFAULT_COMPANIES); 
@@ -435,7 +433,6 @@ const AdminDashboard = () => {
         });
 
       } else {
-        // --- 2. ยังไม่ Login -> สั่ง Login (แล้วรอมันวิ่งกลับไปเข้า if ข้างบน) ---
         signInAnonymously(auth).catch(err => console.error("Login failed:", err));
       }
     });
@@ -447,17 +444,6 @@ const AdminDashboard = () => {
       unsubConfig(); 
     };
   }, []);
-
-  const simulateLineApplication = async () => {
-    try {
-      await addDoc(collection(db, 'users'), {
-        role: 'worker', name: `Test User ${Math.floor(Math.random()*100)}`, phone: '0812345678',
-        lineId: 'test_line_id', lineDisplayName: 'Test Line User', skills: ['ขับรถ'],
-        source: 'line', status: 'pending', registeredAt: serverTimestamp()
-      });
-      alert('Simulation Success!');
-    } catch (e) { alert('Error: ' + e.message); }
-  };
 
   const handleSaveWorker = async () => {
     try {
@@ -553,7 +539,6 @@ const AdminDashboard = () => {
               <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                  <div><h3 className="text-xl font-bold text-slate-800 flex items-center"><Smartphone size={24} className="mr-2 text-green-600"/> ใบสมัครจาก Line OA</h3><p className="text-slate-500 text-sm mt-1">รายการรอตรวจสอบ ({pendingWorkers.length})</p></div>
                  <div className="flex gap-2">
-                    <button onClick={simulateLineApplication} className="px-4 py-2 border border-green-200 bg-green-50 text-green-700 rounded-lg text-sm font-bold">Test Line</button>
                     <button onClick={() => setCurrentView('worker-form')} className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md flex items-center"><UserPlus size={18} className="mr-2"/> ลงทะเบียน Walk-in</button>
                  </div>
               </div>
@@ -568,7 +553,12 @@ const AdminDashboard = () => {
                                 <td className="p-4 font-bold text-slate-800">{w.name}</td>
                                 <td className="p-4 font-mono">{w.phone}</td>
                                 <td className="p-4"><div className="flex gap-1 flex-wrap max-w-[200px]">{w.skills?.slice(0,3).map(s => <span key={s} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-500">{s}</span>)}</div></td>
-                                <td className="p-4 text-right"><button onClick={() => startEdit(w, 'worker')} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm flex items-center ml-auto"><UserCheck size={14} className="mr-1"/> ตรวจสอบ</button></td>
+                                <td className="p-4 text-right">
+                                   <div className="flex justify-end gap-2">
+                                     <button onClick={() => startEdit(w, 'worker')} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm flex items-center"><UserCheck size={14} className="mr-1"/> ตรวจสอบ</button>
+                                     <button onClick={() => handleDelete('users', w.id)} className="bg-white border border-rose-200 text-rose-500 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-rose-50 flex items-center"><Trash2 size={14}/></button>
+                                   </div>
+                                </td>
                              </tr>
                           ))}
                           {pendingWorkers.length === 0 && <tr><td colSpan={5} className="p-12 text-center text-slate-400">ไม่พบรายการใหม่</td></tr>}
@@ -641,7 +631,7 @@ const AdminDashboard = () => {
 };
 
 // ==========================================
-// Main App Component (แก้ไขส่วนนี้)
+// Main App Component
 // ==========================================
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(true);
