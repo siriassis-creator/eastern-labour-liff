@@ -6,7 +6,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, query, onSnapshot, orderBy, 
   serverTimestamp, doc, updateDoc, deleteDoc, where, setDoc, 
-  arrayUnion, arrayRemove, getDocs 
+  arrayUnion, arrayRemove, getDocs, getDoc 
 } from 'firebase/firestore';
 import { 
   Users, Briefcase, Plus, Save, Trash2, Edit2, AlertTriangle, MapPin, 
@@ -15,7 +15,7 @@ import {
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
   UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User,
   DollarSign, Map, File, ChevronRight, Star, Search, Hand, Timer,
-  History, Award
+  History, Award, ThumbsUp, XOctagon, Navigation
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -62,7 +62,6 @@ const formatDateTimeThai = (isoString) => {
   return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
 }
 
-// ✅ 1. เพิ่มฟังก์ชันคำนวณวันที่หายไปกลับมา
 const calculateDurationDays = (start, end) => {
   const s = new Date(start);
   const e = new Date(end);
@@ -203,7 +202,8 @@ const WorkerProfileModal = ({ worker, onClose }) => {
   );
 };
 
-const DashboardView = ({ workers, jobs, onJobClick, onViewWorker }) => {
+// ✅ FIX: รับ onAssignWorker เข้ามาให้ถูกต้อง
+const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker }) => {
   const activeJobs = jobs.filter(j => {
      if (j.status !== 'open') return false;
      if (j.endDate && new Date(j.endDate) < new Date().setHours(0,0,0,0)) return false;
@@ -220,6 +220,7 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker }) => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8">
+       {/* Summary Cards */}
        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
              <div className="text-3xl font-bold text-slate-800 mb-1">{workers.length}</div>
@@ -239,26 +240,48 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker }) => {
           </div>
        </div>
 
+       {/* Job Matching Section */}
        <div>
           <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center"><Star className="mr-2 text-yellow-500" fill="currentColor"/> จับคู่งานอัตโนมัติ (Job Matching)</h2>
+          
           {jobsWithMatch.length === 0 ? (
-             <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400">ไม่มีงานที่เปิดรับสมัครในขณะนี้</div>
+             <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400">
+                ไม่มีงานที่เปิดรับสมัครในขณะนี้
+             </div>
           ) : (
              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {jobsWithMatch.map(job => (
-                   <div key={job.id} onClick={() => onJobClick(job)} className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col">
+                   <div key={job.id} 
+                        className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col"
+                        onClick={() => onJobClick(job)} 
+                   >
                       <div className="p-5 flex-1">
                          <div className="flex justify-between items-start mb-2">
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">รับ {job.headcount} อัตรา</span>
-                            <span className="text-[10px] text-slate-400">หมดเขต: {formatDateThai(job.endDate)}</span>
+                            <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                               รับ {job.headcount} อัตรา
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                               หมดเขต: {formatDateThai(job.endDate)}
+                            </span>
                          </div>
                          <h3 className="font-bold text-lg text-slate-800 leading-tight mb-1">{job.title}</h3>
                          <div className="text-sm text-slate-500 mb-3 flex items-center"><Building2 size={14} className="mr-1"/> {job.companyName}</div>
+                         
                          <div className="flex items-center justify-between mt-4 bg-slate-50 p-3 rounded-xl">
-                            <div className="flex items-center text-sm font-bold text-slate-700"><Users size={18} className="mr-2 text-indigo-600"/>{job.matches.length} คน (Match)</div>
-                            <div className="text-xs text-indigo-600 font-bold flex items-center">ดูรายชื่อ <ChevronRight size={14}/></div>
+                            <div className="flex items-center text-sm font-bold text-slate-700">
+                               <Users size={18} className="mr-2 text-indigo-600"/>
+                               {job.matches.length} คน (Match)
+                            </div>
+                            <div className="text-xs text-indigo-600 font-bold flex items-center">
+                               ดูรายชื่อ <ChevronRight size={14}/>
+                            </div>
                          </div>
-                         {job.interestedCandidates?.length > 0 && <div className="mt-2 text-xs text-orange-600 font-bold flex items-center"><Hand size={12} className="mr-1"/> มีคนกดสนใจแล้ว {job.interestedCandidates.length} คน</div>}
+                         {/* แสดงยอดจอง */}
+                         {job.interestedCandidates?.length > 0 && (
+                            <div className="mt-2 text-xs text-orange-600 font-bold flex items-center">
+                               <Hand size={12} className="mr-1"/> มีคนกดสนใจแล้ว {job.interestedCandidates.length} คน
+                            </div>
+                         )}
                       </div>
                    </div>
                 ))}
@@ -269,6 +292,7 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker }) => {
   );
 };
 
+// --- ReportsView ---
 const ReportsView = ({ workers, jobs }) => (
   <div className="p-6 max-w-5xl mx-auto">
      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -289,7 +313,167 @@ const ReportsView = ({ workers, jobs }) => (
   </div>
 );
 
-const ClientJobSearch = ({ onRedirectRegister }) => {
+// --- MyJobsView ---
+const MyJobsView = ({ onRedirectRegister }) => {
+   const [loading, setLoading] = useState(true);
+   const [user, setUser] = useState(null);
+   const [assignedJobs, setAssignedJobs] = useState([]);
+
+   useEffect(() => {
+      let unsubUser = () => {};
+      
+      const init = async () => {
+         try {
+            await liff.init({ liffId: MY_LIFF_ID });
+            if (!liff.isLoggedIn()) { liff.login(); return; }
+            
+            const profile = await liff.getProfile();
+            const q = query(collection(db, 'users'), where('lineUserId', '==', profile.userId));
+            const snap = await getDocs(q);
+            
+            if (snap.empty) { onRedirectRegister(); return; }
+            
+            const userData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            setUser(userData);
+
+            unsubUser = onSnapshot(doc(db, 'users', userData.id), async (docSnap) => {
+               if (docSnap.exists()) {
+                  const data = docSnap.data();
+                  if (data.assignedJob) {
+                     const jobRef = await getDoc(doc(db, 'jobs', data.assignedJob.jobId));
+                     if (jobRef.exists()) {
+                        setAssignedJobs([{ ...jobRef.data(), id: jobRef.id, assignStatus: data.assignedJob.status }]);
+                     }
+                  } else {
+                     setAssignedJobs([]);
+                  }
+               }
+               setLoading(false);
+            });
+
+         } catch (e) { console.error(e); setLoading(false); }
+      };
+      init();
+      return () => unsubUser();
+   }, []);
+
+   const handleResponse = async (status, job) => {
+      if (!user) return;
+      try {
+         await updateDoc(doc(db, 'users', user.id), {
+            'assignedJob.status': status,
+            'assignedJob.updatedAt': new Date().toISOString()
+         });
+
+         if (status === 'accepted') {
+            if (liff.isInClient()) {
+               await liff.sendMessages([
+                  {
+                     type: "text",
+                     text: `✅ ยืนยันรับงานเรียบร้อย\n\n📌 งาน: ${job.title}\n🏢 บริษัท: ${job.companyName}\n📅 วันที่: ${formatDateThai(job.startDate)}\n📍 สถานที่: ${job.address}\n\nกรุณาไปให้ตรงเวลา ขอบคุณครับ`
+                  },
+                  job.locationUrl ? {
+                     type: "location",
+                     title: job.companyName,
+                     address: job.address,
+                     latitude: 13.7563, 
+                     longitude: 100.5018 
+                  } : null
+               ].filter(Boolean));
+            }
+            alert("ยืนยันรับงานแล้ว! ระบบได้ส่งข้อมูลเข้าแชทของคุณแล้ว");
+         } else {
+            await updateDoc(doc(db, 'users', user.id), { assignedJob: null });
+            alert("ปฏิเสธงานเรียบร้อย");
+         }
+      } catch (e) { alert("Error: " + e.message); }
+   };
+
+   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังโหลดงานของคุณ...</div>;
+
+   return (
+      <div className="min-h-screen bg-slate-100 pb-10">
+         <div className="bg-slate-900 text-white p-6 rounded-b-3xl shadow-lg sticky top-0 z-10">
+            <h1 className="text-xl font-bold flex items-center"><Briefcase className="mr-2 text-yellow-400"/> งานของฉัน (My Jobs)</h1>
+            <div className="text-xs text-slate-400 mt-1">รายการงานที่ได้รับมอบหมาย</div>
+         </div>
+
+         <div className="p-4 space-y-4">
+            {assignedJobs.length === 0 ? (
+               <div className="text-center py-10 text-slate-400 bg-white rounded-2xl border border-dashed"><Search size={48} className="mx-auto mb-2 opacity-50"/><p>ยังไม่มีงานที่ได้รับมอบหมาย</p></div>
+            ) : (
+               assignedJobs.map(job => (
+                  <div key={job.id} className="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-200">
+                     <div className={`p-4 text-white flex justify-between items-center ${job.assignStatus === 'accepted' ? 'bg-green-600' : 'bg-indigo-600'}`}>
+                        <div className="font-bold text-lg">{job.assignStatus === 'accepted' ? 'CONFIRMED' : 'JOB OFFER'}</div>
+                        <div className="bg-white/20 px-2 py-1 rounded text-xs font-mono">ID: {job.id.slice(0,6)}</div>
+                     </div>
+
+                     <div className="p-6 space-y-4">
+                        <div className="text-center pb-4 border-b border-dashed border-slate-300">
+                           <h2 className="text-2xl font-bold text-slate-800 mb-1">{job.title}</h2>
+                           <div className="text-slate-500 font-medium flex items-center justify-center"><Building2 size={16} className="mr-2"/> {job.companyName}</div>
+                        </div>
+
+                        <div className="space-y-3">
+                           <div className="flex items-start gap-3">
+                              <Calendar className="text-indigo-500 shrink-0 mt-0.5" size={20}/>
+                              <div>
+                                 <div className="text-xs text-slate-400 font-bold uppercase">Date & Time</div>
+                                 <div className="text-slate-800 font-medium">{formatDateThai(job.startDate)} - {formatDateThai(job.endDate)}</div>
+                              </div>
+                           </div>
+                           <div className="flex items-start gap-3">
+                              <DollarSign className="text-green-600 shrink-0 mt-0.5" size={20}/>
+                              <div>
+                                 <div className="text-xs text-slate-400 font-bold uppercase">Wage</div>
+                                 <div className="text-slate-800 font-medium">{job.wage} บาท / วัน</div>
+                              </div>
+                           </div>
+                           <div className="flex items-start gap-3">
+                              <MapPin className="text-red-500 shrink-0 mt-0.5" size={20}/>
+                              <div>
+                                 <div className="text-xs text-slate-400 font-bold uppercase">Location</div>
+                                 <div className="text-slate-800 font-medium mb-1">{job.address}</div>
+                                 {job.locationUrl && (
+                                    <a href={job.locationUrl} target="_blank" className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold inline-flex items-center hover:bg-blue-100">
+                                       <Navigation size={12} className="mr-1"/> แผนที่นำทาง
+                                    </a>
+                                 )}
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="pt-4 mt-2">
+                           {job.assignStatus === 'waiting_confirm' && (
+                              <div className="grid grid-cols-2 gap-3">
+                                 <button onClick={() => handleResponse('rejected', job)} className="py-3 rounded-xl border border-slate-300 text-slate-600 font-bold flex items-center justify-center hover:bg-slate-50">
+                                    <XOctagon size={18} className="mr-2"/> ปฏิเสธ
+                                 </button>
+                                 <button onClick={() => handleResponse('accepted', job)} className="py-3 rounded-xl bg-green-600 text-white font-bold flex items-center justify-center hover:bg-green-700 shadow-lg">
+                                    <ThumbsUp size={18} className="mr-2"/> ตอบรับงาน
+                                 </button>
+                              </div>
+                           )}
+                           {job.assignStatus === 'accepted' && (
+                              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                                 <CheckCircle2 size={32} className="text-green-600 mx-auto mb-2"/>
+                                 <div className="font-bold text-green-800">คุณตอบรับงานนี้แล้ว</div>
+                                 <div className="text-xs text-green-600">กรุณาเตรียมตัวให้พร้อมก่อนเริ่มงาน</div>
+                              </div>
+                           )}
+                        </div>
+                     </div>
+                  </div>
+               ))
+            )}
+         </div>
+      </div>
+   );
+}
+
+// ... ClientJobSearchNew (เดิม สำหรับค้นหางานใหม่) ...
+const ClientJobSearchNew = ({ onRedirectRegister }) => {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [matchedJobs, setMatchedJobs] = useState([]);
@@ -466,34 +650,19 @@ const AdminDashboard = () => {
   const handleAddConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayUnion(item) });
   const handleDelConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayRemove(item) });
 
+  // ✅ ฟังก์ชันจ่ายงานแบบใหม่: อัปเดตสถานะ User เป็น "รอการตอบรับ"
   const handleAssignWorker = async (worker, job) => {
-    if (!confirm(`ยืนยันการจ่ายงาน "${job.title}" ให้กับคุณ ${worker.name}?\nระบบจะบันทึกประวัติการทำงานทันที`)) return;
+    if (!confirm(`ยืนยันการจ่ายงาน "${job.title}" ให้กับคุณ ${worker.name}?\nผู้สมัครจะต้องกด 'ตอบรับ' ใน Line OA อีกครั้ง`)) return;
     try {
-       const duration = calculateDurationDays(job.startDate, job.endDate);
-       const historyEntry = { jobId: job.id, jobTitle: job.title, companyName: job.companyName, period: `${formatDateThai(job.startDate)} - ${formatDateThai(job.endDate)}`, duration: duration, assignedAt: new Date().toISOString() };
-       
-       // 1. บันทึกประวัติ
-       await updateDoc(doc(db, 'users', worker.id), { workHistory: arrayUnion(historyEntry) });
-
-       // 2. ✅ (NEW) สร้าง Request ส่งข้อความลง Database (Queue)
-       // **ต้องมี Cloud Function คอยฟัง Collection นี้เพื่อยิง LINE จริงๆ**
-       if (worker.lineUserId) {
-          await addDoc(collection(db, 'notification_queue'), {
-             targetUserId: worker.lineUserId,
-             messageType: 'job_assigned',
-             jobDetails: {
-                title: job.title,
-                company: job.companyName,
-                date: `${formatDateThai(job.startDate)} - ${formatDateThai(job.endDate)}`,
-                wage: job.wage,
-                location: job.locationUrl || ''
-             },
-             status: 'pending',
-             createdAt: serverTimestamp()
-          });
-       }
-
-       alert(`จ่ายงานสำเร็จ!\nบันทึกประวัติและส่งคำสั่งแจ้งเตือนไปยังคุณ ${worker.name} เรียบร้อยแล้ว`);
+       // อัปเดต User ว่ามีงานที่ได้รับมอบหมายแล้ว (รอ Confirm)
+       await updateDoc(doc(db, 'users', worker.id), {
+          assignedJob: {
+             jobId: job.id,
+             status: 'waiting_confirm', // รอการตอบรับจากพนักงาน
+             assignedAt: new Date().toISOString()
+          }
+       });
+       alert(`จ่ายงานสำเร็จ!\nกรุณาแจ้งให้คุณ ${worker.name} กดดูเมนู 'งานของฉัน' เพื่อตอบรับงาน`);
     } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
   };
 
@@ -550,7 +719,8 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {currentView === 'dashboard' && <DashboardView workers={workers} jobs={jobs} onJobClick={setSelectedJob} onViewWorker={setViewingWorker} />}
+        {/* ✅ Dashboard & Modals */}
+        {currentView === 'dashboard' && <DashboardView workers={workers} jobs={jobs} onJobClick={setSelectedJob} onViewWorker={setViewingWorker} onAssignWorker={handleAssignWorker} />}
         {currentView === 'reports' && <ReportsView workers={workers} jobs={jobs} />}
         
         {viewingWorker && <WorkerProfileModal worker={viewingWorker} onClose={() => setViewingWorker(null)} />}
@@ -728,6 +898,8 @@ export default function App() {
       setViewMode('register');
     } else if (mode === 'jobs') {
       setViewMode('jobs');
+    } else if (mode === 'myjobs') {
+      setViewMode('myjobs');
     } else if (isLineApp) {
       setViewMode('register');
     } else {
@@ -739,7 +911,8 @@ export default function App() {
     <>
       {viewMode === 'admin' && <AdminDashboard />}
       {viewMode === 'register' && <RegistrationView />}
-      {viewMode === 'jobs' && <ClientJobSearch onRedirectRegister={() => setViewMode('register')} />}
+      {viewMode === 'jobs' && <ClientJobSearchNew onRedirectRegister={() => setViewMode('register')} />}
+      {viewMode === 'myjobs' && <MyJobsView onRedirectRegister={() => setViewMode('register')} />}
     </>
   );
 }
