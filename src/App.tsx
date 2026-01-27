@@ -14,7 +14,7 @@ import {
   Wrench, Phone, MessageSquare, GraduationCap, Calendar, PieChart, 
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
   UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User,
-  DollarSign, Map, File
+  DollarSign, Map, File, ChevronRight, Star, Search, Hand, Timer
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -40,6 +40,50 @@ const DEFAULT_SKILLS = ["ขับรถ", "แม่บ้าน", "ยกข�
 const DEFAULT_COMPANIES = ["CP All", "Central Group", "ThaiBev", "True Corp", "SCG", "PTT", "Big C", "Lotus's"];
 const EDUCATION_LEVELS = ["ต่ำกว่า ม.6", "ม.6", "ปวช.", "ปวส. / อนุปริญญา", "ปริญญาตรี", "ปริญญาโท หรือสูงกว่า"];
 
+const EDU_RANK = { "ต่ำกว่า ม.6": 0, "ม.6": 1, "ปวช.": 2, "ปวส. / อนุปริญญา": 3, "ปริญญาตรี": 4, "ปริญญาโท หรือสูงกว่า": 5 };
+
+// --- Helpers ---
+const formatDateThai = (dateString) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const formatTimeThai = (isoString) => {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute:'2-digit' });
+};
+
+const formatDateTimeThai = (isoString) => {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
+}
+
+// ✅ Global Match Function
+const calculateMatchScore = (worker, job) => {
+  let totalCriteria = 0;
+  let passedCriteria = 0;
+  
+  if (worker.status !== 'active') return 0; // ต้องเป็น Active เท่านั้น
+
+  if (job.requiredEducation) {
+     totalCriteria += 2;
+     const jobRank = EDU_RANK[job.requiredEducation] || 0;
+     const workerRank = EDU_RANK[worker.education] || 0;
+     if (workerRank >= jobRank) passedCriteria += 2;
+  }
+  if (job.requiredSkills && job.requiredSkills.length > 0) {
+     totalCriteria += job.requiredSkills.length;
+     const workerSkills = worker.skills || [];
+     const matchedSkillsCount = job.requiredSkills.filter(skill => workerSkills.includes(skill)).length;
+     passedCriteria += matchedSkillsCount;
+  }
+  if (totalCriteria === 0) return 100;
+  return Math.round((passedCriteria / totalCriteria) * 100);
+};
+
 // --- Components ---
 const StatusBadge = ({ status }) => {
   const styles = {
@@ -47,11 +91,11 @@ const StatusBadge = ({ status }) => {
     open: "bg-emerald-100 text-emerald-700 border-emerald-200",
     pending: "bg-orange-100 text-orange-700 border-orange-200",
     inactive: "bg-slate-100 text-slate-600 border-slate-200",
-    closed: "bg-slate-100 text-slate-600 border-slate-200",
+    closed: "bg-slate-100 text-slate-500 border-slate-200", 
     blacklisted: "bg-rose-100 text-rose-700 border-rose-200"
   };
   const label = { active: "พร้อมทำงาน", open: "เปิดรับสมัคร", pending: "รอสัมภาษณ์", inactive: "ไม่ว่าง", closed: "ปิดรับสมัคร", blacklisted: "Blacklist" };
-  const icons = { active: <CheckCircle2 size={10} />, open: <CheckCircle2 size={10} />, pending: <Clock size={10} />, blacklisted: <XCircle size={10} /> };
+  const icons = { active: <CheckCircle2 size={10} />, open: <CheckCircle2 size={10} />, pending: <Clock size={10} />, blacklisted: <XCircle size={10} />, closed: <XCircle size={10} /> };
 
   return (
     <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${styles[status] || styles.inactive} flex items-center justify-center w-full min-w-[80px] gap-1 shadow-sm`}>
@@ -67,28 +111,9 @@ const ConfigModal = ({ title, items, onAdd, onDelete, onClose, icon: Icon }) => 
   return (
     <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-slate-800 flex items-center">{Icon && <Icon size={18} className="mr-2 text-indigo-600"/>} {title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-slate-200 rounded-full p-1"><X size={16}/></button>
-        </div>
-        <div className="p-4 border-b border-slate-100 bg-white">
-          <div className="flex gap-2">
-            <input className="flex-1 border border-slate-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500" placeholder="ระบุชื่อรายการใหม่..." value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
-            <button onClick={handleAdd} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700">เพิ่ม</button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 bg-slate-50">
-          {items.length === 0 ? <div className="text-center text-slate-400 py-8 text-sm">ไม่มีรายการ</div> : (
-            <div className="space-y-2 p-2">
-              {items.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-200 shadow-sm rounded-xl group hover:border-indigo-300 transition-all">
-                  <span className="text-slate-700 text-sm font-medium">{item}</span>
-                  <button onClick={() => onDelete(item)} className="text-slate-300 hover:text-rose-500"><Trash2 size={16}/></button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50"><h3 className="font-bold text-slate-800 flex items-center">{Icon && <Icon size={18} className="mr-2 text-indigo-600"/>} {title}</h3><button onClick={onClose} className="text-slate-400 hover:text-slate-600 bg-slate-200 rounded-full p-1"><X size={16}/></button></div>
+        <div className="p-4 border-b border-slate-100 bg-white"><div className="flex gap-2"><input className="flex-1 border border-slate-300 rounded-xl px-4 py-2 text-sm" placeholder="ระบุชื่อรายการใหม่..." value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} /><button onClick={handleAdd} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-700">เพิ่ม</button></div></div>
+        <div className="flex-1 overflow-y-auto p-2 bg-slate-50">{items.length === 0 ? <div className="text-center text-slate-400 py-8 text-sm">ไม่มีรายการ</div> : (<div className="space-y-2 p-2">{items.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-200 shadow-sm rounded-xl"><span className="text-slate-700 text-sm font-medium">{item}</span><button onClick={() => onDelete(item)} className="text-slate-300 hover:text-rose-500"><Trash2 size={16}/></button></div>))}</div>)}</div>
       </div>
     </div>
   );
@@ -97,50 +122,103 @@ const ConfigModal = ({ title, items, onAdd, onDelete, onClose, icon: Icon }) => 
 const AppIcon = ({ icon: Icon, label, color, badge, onClick }) => (
   <button onClick={onClick} className={`relative w-full aspect-[5/4] ${color} rounded-3xl shadow-xl hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 group overflow-hidden flex flex-col items-center justify-center`}>
     <Icon size={160} className="absolute -right-8 -bottom-8 text-white/10 group-hover:rotate-12 transition-transform duration-500 pointer-events-none" />
-    <div className="bg-white/20 p-4 rounded-3xl mb-4 backdrop-blur-sm group-hover:scale-110 transition-transform duration-300 shadow-inner">
-       <Icon size={48} className="text-white drop-shadow-md" />
-    </div>
+    <div className="bg-white/20 p-4 rounded-3xl mb-4 backdrop-blur-sm group-hover:scale-110 transition-transform duration-300 shadow-inner"><Icon size={48} className="text-white drop-shadow-md" /></div>
     <span className="text-white font-bold text-lg md:text-xl tracking-wide drop-shadow-sm px-2 relative z-10">{label}</span>
     {badge > 0 && <div className="absolute top-4 right-4 bg-white text-red-600 text-sm md:text-base font-extrabold px-3 py-1 rounded-full shadow-lg min-w-[2rem] z-20 animate-pulse border-2 border-red-100">{badge > 99 ? '99+' : badge}</div>}
   </button>
 );
 
-// --- Sub-Views ---
+// ✅ 1. ย้าย DashboardView ขึ้นมาไว้ตรงนี้ (ก่อน AdminDashboard)
+const DashboardView = ({ workers, jobs, onJobClick }) => {
+  const activeJobs = jobs.filter(j => {
+     if (j.status !== 'open') return false;
+     if (j.endDate && new Date(j.endDate) < new Date().setHours(0,0,0,0)) return false;
+     return true;
+  });
 
-const DashboardView = ({ workers, jobs }) => {
-  const activeWorkers = workers.filter(w => w.status === 'active').length;
-  const pendingWorkers = workers.filter(w => w.status === 'pending').length;
-  const openJobs = jobs.filter(j => j.status === 'open').length;
+  const jobsWithMatch = activeJobs.map(job => {
+     const matches = workers
+        .map(w => ({ ...w, score: calculateMatchScore(w, job) }))
+        .filter(w => w.score > 0)
+        .sort((a, b) => b.score - a.score);
+     return { ...job, matches };
+  });
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="p-6 max-w-6xl mx-auto space-y-8">
+       {/* Summary Cards */}
+       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
-             <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3"><Users size={24}/></div>
              <div className="text-3xl font-bold text-slate-800 mb-1">{workers.length}</div>
-             <div className="text-sm text-slate-500">ฐานข้อมูลทั้งหมด</div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center relative overflow-hidden">
-             {pendingWorkers > 0 && <div className="absolute top-0 right-0 bg-red-500 w-3 h-3 rounded-full m-3 animate-ping"></div>}
-             <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-3"><UserPlus size={24}/></div>
-             <div className="text-3xl font-bold text-orange-600 mb-1">{pendingWorkers}</div>
-             <div className="text-sm text-slate-500">รอตรวจสอบ (Line OA)</div>
+             <div className="text-xs text-slate-500">ฐานข้อมูลทั้งหมด</div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
-             <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3"><CheckCircle2 size={24}/></div>
-             <div className="text-3xl font-bold text-emerald-600 mb-1">{activeWorkers}</div>
-             <div className="text-sm text-slate-500">พร้อมทำงาน</div>
+             <div className="text-3xl font-bold text-emerald-600 mb-1">{workers.filter(w=>w.status==='active').length}</div>
+             <div className="text-xs text-slate-500">พร้อมทำงาน</div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
-             <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3"><Briefcase size={24}/></div>
-             <div className="text-3xl font-bold text-indigo-600 mb-1">{openJobs}</div>
-             <div className="text-sm text-slate-500">งานเปิดรับสมัคร</div>
+             <div className="text-3xl font-bold text-indigo-600 mb-1">{activeJobs.length}</div>
+             <div className="text-xs text-slate-500">งานเปิดรับสมัคร</div>
           </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
+             <div className="text-3xl font-bold text-orange-600 mb-1">{workers.filter(w=>w.status==='pending').length}</div>
+             <div className="text-xs text-slate-500">รอตรวจสอบ</div>
+          </div>
+       </div>
+
+       {/* Job Matching Section */}
+       <div>
+          <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center"><Star className="mr-2 text-yellow-500" fill="currentColor"/> จับคู่งานอัตโนมัติ (Job Matching)</h2>
+          
+          {jobsWithMatch.length === 0 ? (
+             <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400">
+                ไม่มีงานที่เปิดรับสมัครในขณะนี้
+             </div>
+          ) : (
+             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {jobsWithMatch.map(job => (
+                   <div key={job.id} 
+                        className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col"
+                        onClick={() => onJobClick(job)} 
+                   >
+                      <div className="p-5 flex-1">
+                         <div className="flex justify-between items-start mb-2">
+                            <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                               รับ {job.headcount} อัตรา
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                               หมดเขต: {formatDateThai(job.endDate)}
+                            </span>
+                         </div>
+                         <h3 className="font-bold text-lg text-slate-800 leading-tight mb-1">{job.title}</h3>
+                         <div className="text-sm text-slate-500 mb-3 flex items-center"><Building2 size={14} className="mr-1"/> {job.companyName}</div>
+                         
+                         <div className="flex items-center justify-between mt-4 bg-slate-50 p-3 rounded-xl">
+                            <div className="flex items-center text-sm font-bold text-slate-700">
+                               <Users size={18} className="mr-2 text-indigo-600"/>
+                               {job.matches.length} คน (Match)
+                            </div>
+                            <div className="text-xs text-indigo-600 font-bold flex items-center">
+                               ดูรายชื่อ <ChevronRight size={14}/>
+                            </div>
+                         </div>
+                         {/* แสดงยอดจอง */}
+                         {job.interestedCandidates?.length > 0 && (
+                            <div className="mt-2 text-xs text-orange-600 font-bold flex items-center">
+                               <Hand size={12} className="mr-1"/> มีคนกดสนใจแล้ว {job.interestedCandidates.length} คน
+                            </div>
+                         )}
+                      </div>
+                   </div>
+                ))}
+             </div>
+          )}
        </div>
     </div>
   );
 };
 
+// ✅ 2. ย้าย ReportsView ขึ้นมา
 const ReportsView = ({ workers, jobs }) => (
   <div className="p-6 max-w-5xl mx-auto">
      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -152,7 +230,7 @@ const ReportsView = ({ workers, jobs }) => (
               <thead className="bg-slate-50 text-slate-500"><tr><th className="p-3 rounded-l-lg">หัวข้อรายงาน</th><th className="p-3">จำนวนรายการ</th><th className="p-3 rounded-r-lg text-right">สถานะ</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                  <tr><td className="p-3 font-medium">พนักงานในระบบทั้งหมด</td><td className="p-3">{workers.length} คน</td><td className="p-3 text-right text-green-600">ปกติ</td></tr>
-                 <tr><td className="p-3 font-medium">ตำแหน่งงานที่เปิดรับ</td><td className="p-3">{jobs.length} ตำแหน่ง</td><td className="p-3 text-right text-green-600">ปกติ</td></tr>
+                 <tr><td className="p-3 font-medium">ตำแหน่งงานทั้งหมด</td><td className="p-3">{jobs.length} ตำแหน่ง</td><td className="p-3 text-right text-green-600">ปกติ</td></tr>
                  <tr><td className="p-3 font-medium">พนักงานติด Blacklist</td><td className="p-3">{workers.filter(w => w.status === 'blacklisted').length} คน</td><td className="p-3 text-right text-red-500">ต้องตรวจสอบ</td></tr>
               </tbody>
            </table>
@@ -161,7 +239,211 @@ const ReportsView = ({ workers, jobs }) => (
   </div>
 );
 
-// --- Registration View (LIFF) ---
+// --- Client Job Search View ---
+const ClientJobSearch = ({ onRedirectRegister }) => {
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [matchedJobs, setMatchedJobs] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [applyingId, setApplyingId] = useState(null);
+
+  useEffect(() => {
+    let unsubJobs = () => {};
+    
+    const init = async () => {
+      try {
+        await liff.init({ liffId: MY_LIFF_ID });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        
+        const profile = await liff.getProfile();
+        
+        const qUser = query(collection(db, 'users'), where('lineUserId', '==', profile.userId));
+        const userSnap = await getDocs(qUser);
+
+        if (userSnap.empty) { onRedirectRegister(); return; }
+
+        const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
+        setCurrentUser(userData);
+
+        const qJobs = query(collection(db, 'jobs'), orderBy('createdAt', 'desc'));
+        unsubJobs = onSnapshot(qJobs, (snapshot) => {
+           const jobsData = snapshot.docs
+              .map(d => ({ id: d.id, ...d.data() }))
+              .filter(j => j.status === 'open' && (!j.endDate || new Date(j.endDate) >= new Date().setHours(0,0,0,0)))
+              .map(job => ({ ...job, score: calculateMatchScore(userData, job) }))
+              .filter(job => job.score > 0)
+              .sort((a, b) => b.score - a.score);
+           
+           setMatchedJobs(jobsData);
+           setLoading(false);
+        });
+
+      } catch (err) {
+        console.error(err);
+        alert("เกิดข้อผิดพลาด");
+        setLoading(false);
+      }
+    };
+    init();
+    return () => unsubJobs();
+  }, []);
+
+  const handleApplyJob = async (job) => {
+    if (!currentUser) return;
+    if (confirm(`ยืนยันการลงชื่อสนใจงาน "${job.title}"\nเจ้าหน้าที่จะติดต่อกลับตามลำดับคิวครับ`)) {
+       setApplyingId(job.id);
+       try {
+          const jobRef = doc(db, 'jobs', job.id);
+          const applicantData = {
+             workerId: currentUser.id,
+             name: currentUser.name,
+             phone: currentUser.phone,
+             linePictureUrl: currentUser.linePictureUrl || '',
+             appliedAt: new Date().toISOString()
+          };
+
+          await updateDoc(jobRef, {
+             interestedCandidates: arrayUnion(applicantData)
+          });
+          
+          alert("ลงชื่อเรียบร้อย! กรุณารอการติดต่อกลับ");
+          setSelectedJob(null);
+       } catch (error) {
+          alert("เกิดข้อผิดพลาด: " + error.message);
+       }
+       setApplyingId(null);
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังค้นหางาน...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-10">
+       <div className="bg-slate-900 text-white p-6 rounded-b-3xl shadow-lg sticky top-0 z-10">
+          <div className="flex justify-between items-center mb-2">
+             <h1 className="text-xl font-bold flex items-center"><Briefcase className="mr-2 text-yellow-400"/> งานที่เหมาะกับคุณ</h1>
+             {currentUser && <div className="flex items-center gap-2"><div className="text-right"><div className="text-xs text-slate-400">สวัสดี</div><div className="text-sm font-bold">{currentUser.name}</div></div><img src={currentUser.linePictureUrl} className="w-10 h-10 rounded-full border-2 border-white"/></div>}
+          </div>
+       </div>
+
+       <div className="p-4 space-y-4">
+          {matchedJobs.length === 0 ? (
+             <div className="text-center py-10 text-slate-400">
+                <Search size={48} className="mx-auto mb-2 opacity-50"/>
+                <p>ยังไม่มีงานที่ตรงกับคุณในขณะนี้</p>
+             </div>
+          ) : (
+             matchedJobs.map(job => {
+                const appliedCount = job.interestedCandidates?.length || 0;
+                const isApplied = job.interestedCandidates?.some(c => c.workerId === currentUser.id);
+
+                return (
+                  <div key={job.id} onClick={() => setSelectedJob(job)} className="bg-white rounded-2xl shadow-sm overflow-hidden active:scale-95 transition-transform duration-200 relative">
+                     <div className={`h-2 ${job.score >= 80 ? 'bg-green-500' : job.score >= 50 ? 'bg-yellow-500' : 'bg-orange-500'}`} style={{width: `${job.score}%`}}></div>
+                     
+                     <div className="p-5">
+                        <div className="flex justify-between items-start mb-2">
+                           <h3 className="font-bold text-lg text-slate-800 line-clamp-1">{job.title}</h3>
+                           <span className={`text-xs font-bold px-2 py-1 rounded-lg ${job.score >= 80 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                              {job.score}% ตรงใจ
+                           </span>
+                        </div>
+                        <div className="text-slate-500 text-sm mb-3 flex items-center gap-1"><Building2 size={14}/> {job.companyName}</div>
+                        
+                        <div className="flex flex-wrap gap-2 mb-4">
+                           <span className="bg-slate-50 border px-2 py-1 rounded text-xs text-slate-600 flex items-center"><DollarSign size={12} className="mr-1"/> {job.wage} บ./วัน</span>
+                           <span className={`border px-2 py-1 rounded text-xs flex items-center font-bold ${appliedCount >= parseInt(job.headcount) ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                              <Users size={12} className="mr-1"/> จองแล้ว {appliedCount} / รับ {job.headcount}
+                           </span>
+                        </div>
+
+                        {isApplied ? (
+                           <div className="w-full bg-green-100 text-green-700 py-2 rounded-xl text-sm font-bold flex items-center justify-center border border-green-200">
+                              <CheckCircle2 size={16} className="mr-2"/> ลงชื่อแล้ว
+                           </div>
+                        ) : (
+                           <button className="w-full bg-indigo-600 text-white py-2 rounded-xl text-sm font-bold flex items-center justify-center">ดูรายละเอียด</button>
+                        )}
+                     </div>
+                  </div>
+                );
+             })
+          )}
+       </div>
+
+       {selectedJob && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-sm animate-fade-in">
+             <div className="bg-white w-full sm:max-w-md h-[85vh] sm:h-auto sm:rounded-2xl rounded-t-3xl flex flex-col overflow-hidden animate-slide-up">
+                <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+                   <h3 className="font-bold text-lg text-slate-800">รายละเอียดงาน</h3>
+                   <button onClick={() => setSelectedJob(null)} className="bg-slate-200 p-2 rounded-full text-slate-600"><X size={20}/></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                   <div>
+                      <div className="text-2xl font-bold text-slate-800 mb-1">{selectedJob.title}</div>
+                      <div className="text-slate-500 font-medium flex items-center"><Building2 size={16} className="mr-2"/> {selectedJob.companyName}</div>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center">
+                         <div className="text-xs text-green-600 mb-1">รายได้/วัน</div>
+                         <div className="font-bold text-green-700 text-lg">{selectedJob.wage}</div>
+                      </div>
+                      <div className="bg-orange-50 p-3 rounded-xl border border-orange-100 text-center">
+                         <div className="text-xs text-orange-600 mb-1">ลงชื่อแล้ว</div>
+                         <div className="font-bold text-orange-700 text-lg">{selectedJob.interestedCandidates?.length || 0} / {selectedJob.headcount}</div>
+                      </div>
+                   </div>
+
+                   <div className="space-y-3">
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                         <h4 className="font-bold text-sm mb-2 flex items-center text-slate-700"><Calendar size={16} className="mr-2 text-indigo-500"/> ระยะเวลางาน</h4>
+                         <div className="text-sm text-slate-600">{formatDateThai(selectedJob.startDate)} - {formatDateThai(selectedJob.endDate)}</div>
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                         <h4 className="font-bold text-sm mb-2 flex items-center text-slate-700"><MapPin size={16} className="mr-2 text-red-500"/> สถานที่ปฏิบัติงาน</h4>
+                         <div className="text-sm text-slate-600 mb-2">{selectedJob.address || '-'}</div>
+                         {selectedJob.locationUrl && (
+                            <a href={selectedJob.locationUrl} target="_blank" className="text-xs bg-white border border-slate-300 px-3 py-2 rounded-lg inline-flex items-center hover:bg-slate-100 text-slate-700 font-bold">
+                               <Map size={14} className="mr-1"/> เปิดแผนที่นำทาง
+                            </a>
+                         )}
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                         <h4 className="font-bold text-sm mb-2 flex items-center text-slate-700"><CheckCircle2 size={16} className="mr-2 text-green-500"/> คุณสมบัติ</h4>
+                         <ul className="text-sm text-slate-600 space-y-1 list-disc pl-5">
+                            <li>วุฒิ: {selectedJob.requiredEducation || 'ไม่ระบุ'}</li>
+                            {selectedJob.requiredSkills?.map(s => <li key={s}>{s}</li>)}
+                         </ul>
+                      </div>
+                      {selectedJob.note && <div className="p-4 bg-slate-50 rounded-xl border border-slate-100"><h4 className="font-bold text-sm mb-2 text-slate-700">รายละเอียดเพิ่มเติม</h4><div className="text-sm text-slate-600">{selectedJob.note}</div></div>}
+                   </div>
+                </div>
+                
+                <div className="p-5 border-t bg-white">
+                   {selectedJob.interestedCandidates?.some(c => c.workerId === currentUser.id) ? (
+                      <button disabled className="w-full bg-slate-100 text-slate-500 py-3 rounded-xl font-bold text-lg flex items-center justify-center cursor-not-allowed">
+                         <Check size={20} className="mr-2"/> คุณลงชื่อสนใจงานนี้แล้ว
+                      </button>
+                   ) : (
+                      <button 
+                         onClick={() => handleApplyJob(selectedJob)} 
+                         disabled={applyingId === selectedJob.id}
+                         className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center"
+                      >
+                         {applyingId === selectedJob.id ? <Activity className="animate-spin mr-2"/> : <Hand size={20} className="mr-2"/>}
+                         กดสนใจงานนี้
+                      </button>
+                   )}
+                </div>
+             </div>
+          </div>
+       )}
+    </div>
+  );
+};
+
+// ... RegistrationView ...
 const RegistrationView = () => {
   const [formData, setFormData] = useState({ 
     name: '', phone: '', education: '', skills: [], 
@@ -322,6 +604,8 @@ const AdminDashboard = () => {
   const [companiesList, setCompaniesList] = useState([]);
   const [configModalType, setConfigModalType] = useState(null);
   const [permissionError, setPermissionError] = useState(false);
+  const [selectedJob, setSelectedJob] = useState(null); 
+  const [matchTab, setMatchTab] = useState('interested'); 
   
   const [workerForm, setWorkerForm] = useState({ 
     name: '', phone: '', lineId: '', lineDisplayName: '', linePictureUrl: '', source: 'office', 
@@ -329,11 +613,10 @@ const AdminDashboard = () => {
     idCard: '', address: '', experience: '', refName: '', refPhone: '', training: ''
   });
   
-  // ✅ เพิ่มฟิลด์ใหม่: address, locationUrl, headcount, duration, note, requiredSkills
   const [jobForm, setJobForm] = useState({ 
     title: '', companyName: '', address: '', locationUrl: '',
-    headcount: '', duration: '', wage: '', note: '',
-    requiredSkills: [], status: 'open' 
+    headcount: '', startDate: '', endDate: '', wage: '', note: '',
+    requiredSkills: [], requiredEducation: '', status: 'open' 
   });
 
   useEffect(() => {
@@ -364,24 +647,8 @@ const AdminDashboard = () => {
     return () => { authUnsub(); unsubWorkers(); unsubJobs(); unsubConfig(); };
   }, []);
 
-  const handleSaveWorker = async () => {
-    try {
-      const payload = { ...workerForm, role: 'worker', updatedAt: serverTimestamp() };
-      if (editingId) await updateDoc(doc(db, 'users', editingId), payload);
-      else await addDoc(collection(db, 'users'), { ...payload, registeredAt: serverTimestamp(), source: 'office' });
-      goBack();
-    } catch (e) { alert('Error: ' + e.message); }
-  };
-
-  const handleSaveJob = async () => {
-    try {
-      const payload = { ...jobForm, employerId: 'admin', updatedAt: serverTimestamp() };
-      if (editingId) await updateDoc(doc(db, 'jobs', editingId), payload);
-      else await addDoc(collection(db, 'jobs'), { ...payload, createdAt: serverTimestamp() });
-      goBack();
-    } catch (e) { alert('Error: ' + e.message); }
-  };
-
+  const handleSaveWorker = async () => { try { const payload = { ...workerForm, role: 'worker', updatedAt: serverTimestamp() }; if (editingId) await updateDoc(doc(db, 'users', editingId), payload); else await addDoc(collection(db, 'users'), { ...payload, registeredAt: serverTimestamp(), source: 'office' }); goBack(); } catch (e) { alert('Error: ' + e.message); } };
+  const handleSaveJob = async () => { try { const payload = { ...jobForm, employerId: 'admin', updatedAt: serverTimestamp() }; if (editingId) await updateDoc(doc(db, 'jobs', editingId), payload); else await addDoc(collection(db, 'jobs'), { ...payload, createdAt: serverTimestamp() }); goBack(); } catch (e) { alert('Error: ' + e.message); } };
   const handleDelete = async (coll, id) => { if (confirm('ยืนยันลบ?')) await deleteDoc(doc(db, coll, id)); };
   const handleAddConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayUnion(item) });
   const handleDelConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayRemove(item) });
@@ -389,26 +656,15 @@ const AdminDashboard = () => {
   const goBack = () => {
     setEditingId(null);
     setWorkerForm({ name: '', phone: '', lineId: '', lineDisplayName: '', linePictureUrl: '', source: 'office', skills: [], education: '', status: 'active', idCard: '', address: '', experience: '', refName: '', refPhone: '', training: '' });
-    // Reset Form
-    setJobForm({ title: '', companyName: '', address: '', locationUrl: '', headcount: '', duration: '', wage: '', note: '', requiredSkills: [], status: 'open' });
+    setJobForm({ title: '', companyName: '', address: '', locationUrl: '', headcount: '', startDate: '', endDate: '', wage: '', note: '', requiredSkills: [], requiredEducation: '', status: 'open' });
     if (currentView === 'recruitment' && editingId) setCurrentView('recruitment');
     else if ((currentView === 'worker-form' || currentView === 'job-form') && editingId) setCurrentView(currentView === 'worker-form' ? 'workers-list' : 'jobs-list');
     else setCurrentView('home');
     setEditingId(null);
   };
 
-  const startEdit = (item, type) => {
-    setEditingId(item.id);
-    if (type === 'worker') { setWorkerForm(item); setCurrentView('worker-form'); } 
-    else { setJobForm(item); setCurrentView('job-form'); }
-  };
-
-  const toggleArrayItem = (item, type, field) => {
-    const target = type === 'worker' ? workerForm : jobForm;
-    const setTarget = type === 'worker' ? setWorkerForm : setJobForm;
-    setTarget({ ...target, [field]: target[field].includes(item) ? target[field].filter(s => s !== item) : [...target[field], item] });
-  };
-
+  const startEdit = (item, type) => { setEditingId(item.id); if (type === 'worker') { setWorkerForm(item); setCurrentView('worker-form'); } else { setJobForm(item); setCurrentView('job-form'); } };
+  const toggleArrayItem = (item, type, field) => { const target = type === 'worker' ? workerForm : jobForm; const setTarget = type === 'worker' ? setWorkerForm : setJobForm; setTarget({ ...target, [field]: target[field].includes(item) ? target[field].filter(s => s !== item) : [...target[field], item] }); };
   const pendingWorkers = workers.filter(w => w.status === 'pending');
 
   if (permissionError) return <div className="min-h-screen flex items-center justify-center p-4 text-center"><AlertTriangle size={32} className="mx-auto mb-4 text-red-500"/>Access Denied (Check Firestore Rules)</div>;
@@ -440,19 +696,20 @@ const AdminDashboard = () => {
                 <p className="text-slate-500 font-medium">ระบบจัดการฐานข้อมูลและทรัพยากรบุคคล</p>
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 max-w-4xl w-full animate-fade-in-up delay-100">
-                <AppIcon icon={Users} label="ฐานข้อมูลพนักงาน" color="bg-gradient-to-br from-blue-500 to-blue-600" badge={workers.filter(w => w.status === 'active').length} onClick={() => setCurrentView('workers-list')} />
-                <AppIcon icon={Building2} label="ฐานข้อมูลบริษัท" color="bg-gradient-to-br from-indigo-500 to-indigo-600" badge={jobs.length} onClick={() => setCurrentView('jobs-list')} />
-                <AppIcon icon={PieChart} label="Dashboard" color="bg-gradient-to-br from-purple-500 to-purple-600" onClick={() => setCurrentView('dashboard')} />
-                <AppIcon icon={UserPlus} label="พนักงานใหม่" color="bg-gradient-to-br from-emerald-500 to-emerald-600" badge={pendingWorkers.length} onClick={() => setCurrentView('recruitment')} />
-                <AppIcon icon={PlusCircle} label="งานใหม่" color="bg-gradient-to-br from-orange-500 to-orange-600" onClick={() => setCurrentView('job-form')} />
-                <AppIcon icon={FileText} label="รายงาน" color="bg-gradient-to-br from-slate-600 to-slate-700" onClick={() => setCurrentView('reports')} />
+                <AppIcon icon={Users} label="1. ฐานข้อมูลพนักงาน" color="bg-gradient-to-br from-blue-500 to-blue-600" badge={workers.filter(w => w.status === 'active').length} onClick={() => setCurrentView('workers-list')} />
+                <AppIcon icon={Building2} label="2. ฐานข้อมูลบริษัท" color="bg-gradient-to-br from-indigo-500 to-indigo-600" badge={jobs.length} onClick={() => setCurrentView('jobs-list')} />
+                <AppIcon icon={PieChart} label="3. Dashboard" color="bg-gradient-to-br from-purple-500 to-purple-600" onClick={() => setCurrentView('dashboard')} />
+                <AppIcon icon={UserPlus} label="4. พนักงานใหม่" color="bg-gradient-to-br from-emerald-500 to-emerald-600" badge={pendingWorkers.length} onClick={() => setCurrentView('recruitment')} />
+                <AppIcon icon={PlusCircle} label="5. งานใหม่" color="bg-gradient-to-br from-orange-500 to-orange-600" onClick={() => setCurrentView('job-form')} />
+                <AppIcon icon={FileText} label="6. รายงาน" color="bg-gradient-to-br from-slate-600 to-slate-700" onClick={() => setCurrentView('reports')} />
              </div>
           </div>
         )}
 
-        {currentView === 'dashboard' && <DashboardView workers={workers} jobs={jobs} />}
+        {/* ✅ Fix: ส่ง prop onJobClick ไปให้ DashboardView */}
+        {currentView === 'dashboard' && <DashboardView workers={workers} jobs={jobs} onJobClick={setSelectedJob} />}
         {currentView === 'reports' && <ReportsView workers={workers} jobs={jobs} />}
-
+        
         {currentView === 'recruitment' && (
            <div className="p-6 w-full space-y-6">
               <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -540,24 +797,33 @@ const AdminDashboard = () => {
                         <tr>
                            <th className="p-4">ชื่องาน</th>
                            <th className="p-4">บริษัท</th>
+                           <th className="p-4">ระยะเวลา</th>
                            <th className="p-4">คน</th>
-                           <th className="p-4">ค่าจ้าง</th>
+                           <th className="p-4">สถานะ</th>
                            <th className="p-4 text-right">จัดการ</th>
                         </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100">
-                        {jobs.map(j => (
-                           <tr key={j.id} className="hover:bg-slate-50">
-                              <td className="p-4 font-bold">{j.title}</td>
-                              <td className="p-4">
-                                 <div className="font-medium text-slate-800">{j.companyName}</div>
-                                 {j.address && <div className="text-xs text-slate-400 truncate max-w-[200px]">{j.address}</div>}
-                              </td>
-                              <td className="p-4 text-slate-600"><Users size={14} className="inline mr-1"/>{j.headcount || '-'}</td>
-                              <td className="p-4 text-green-600 font-bold">{j.wage}</td>
-                              <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(j,'job')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('jobs', j.id)}><Trash2 size={16}/></button></td>
-                           </tr>
-                        ))}
+                        {jobs.map(j => {
+                           const isExpired = j.endDate && new Date(j.endDate) < new Date().setHours(0,0,0,0);
+                           const displayStatus = isExpired ? 'closed' : j.status;
+                           return (
+                             <tr key={j.id} className="hover:bg-slate-50">
+                                <td className="p-4 font-bold">{j.title}</td>
+                                <td className="p-4">
+                                   <div className="font-medium text-slate-800">{j.companyName}</div>
+                                   {j.address && <div className="text-xs text-slate-400 truncate max-w-[200px]">{j.address}</div>}
+                                </td>
+                                <td className="p-4 text-xs text-slate-600">
+                                   <div>เริ่ม: {formatDateThai(j.startDate)}</div>
+                                   <div>สิ้นสุด: {formatDateThai(j.endDate)}</div>
+                                </td>
+                                <td className="p-4 text-slate-600"><Users size={14} className="inline mr-1"/>{j.headcount || '-'}</td>
+                                <td className="p-4"><StatusBadge status={displayStatus}/></td>
+                                <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(j,'job')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('jobs', j.id)}><Trash2 size={16}/></button></td>
+                             </tr>
+                           );
+                        })}
                      </tbody>
                   </table>
                </div>
@@ -569,7 +835,6 @@ const AdminDashboard = () => {
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                  {currentView === 'worker-form' ? (
                     <>
-                      {/* ... (Worker Form - ส่วนพนักงาน เหมือนเดิม) ... */}
                       <div className="flex items-center gap-4 border-b pb-4">
                          {workerForm.lineDisplayName ? (
                             <div className="flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-100 w-full">
@@ -616,9 +881,7 @@ const AdminDashboard = () => {
                       </div>
                     </>
                  ) : (
-                    // ✅ JOB FORM (แก้ไขส่วนนี้ใหม่ทั้งหมด)
                     <div className="space-y-6">
-                       {/* ส่วนที่ 1: ข้อมูลบริษัท */}
                        <div className="grid md:grid-cols-2 gap-6">
                           <h3 className="md:col-span-2 font-bold text-slate-700 border-b pb-2 flex items-center"><Building2 size={18} className="mr-2 text-indigo-600"/> ข้อมูลบริษัท</h3>
                           <div>
@@ -635,7 +898,6 @@ const AdminDashboard = () => {
                           </div>
                        </div>
 
-                       {/* ส่วนที่ 2: รายละเอียดงาน */}
                        <div className="grid md:grid-cols-2 gap-6">
                           <h3 className="md:col-span-2 font-bold text-slate-700 border-b pb-2 flex items-center"><Briefcase size={18} className="mr-2 text-orange-600"/> รายละเอียดงาน</h3>
                           <div>
@@ -650,17 +912,32 @@ const AdminDashboard = () => {
                              <label className="text-sm font-bold block mb-1">จำนวนที่ต้องการ (คน)</label>
                              <input className="w-full border p-2 rounded" type="number" placeholder="เช่น 5" value={jobForm.headcount} onChange={e=>setJobForm({...jobForm, headcount: e.target.value})}/>
                           </div>
-                          <div>
-                             <label className="text-sm font-bold block mb-1">ระยะเวลาจ้างงาน</label>
-                             <input className="w-full border p-2 rounded" placeholder="เช่น 3 เดือน, ประจำ" value={jobForm.duration} onChange={e=>setJobForm({...jobForm, duration: e.target.value})}/>
+                          
+                          <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100">
+                             <div>
+                                <label className="text-sm font-bold block mb-1 text-orange-700">วันที่เริ่มงาน</label>
+                                <input type="date" className="w-full border p-2 rounded" value={jobForm.startDate} onChange={e=>setJobForm({...jobForm, startDate: e.target.value})}/>
+                             </div>
+                             <div>
+                                <label className="text-sm font-bold block mb-1 text-orange-700">วันที่สิ้นสุด</label>
+                                <input type="date" className="w-full border p-2 rounded" value={jobForm.endDate} onChange={e=>setJobForm({...jobForm, endDate: e.target.value})}/>
+                             </div>
                           </div>
+                          
+                          <div className="md:col-span-2">
+                             <label className="text-sm font-bold block mb-1 flex items-center"><GraduationCap size={16} className="mr-1"/> วุฒิที่ต้องการ (ขั้นต่ำ)</label>
+                             <select className="w-full border p-2 rounded bg-indigo-50 border-indigo-200" value={jobForm.requiredEducation} onChange={e=>setJobForm({...jobForm, requiredEducation: e.target.value})}>
+                                <option value="">-- ไม่จำกัดวุฒิ --</option>
+                                {EDUCATION_LEVELS.map(edu => <option key={edu} value={edu}>{edu}</option>)}
+                             </select>
+                          </div>
+
                           <div className="md:col-span-2">
                              <label className="text-sm font-bold block mb-1">หมายเหตุ / อื่นๆ</label>
                              <textarea className="w-full border p-2 rounded" rows={3} placeholder="รายละเอียดเพิ่มเติม..." value={jobForm.note} onChange={e=>setJobForm({...jobForm, note: e.target.value})}/>
                           </div>
                        </div>
 
-                       {/* ส่วนที่ 3: ทักษะที่ต้องการ */}
                        <div>
                           <h3 className="font-bold text-slate-700 border-b pb-2 mb-4 flex items-center"><Wrench size={18} className="mr-2 text-green-600"/> ทักษะที่ต้องการ</h3>
                           <div className="flex flex-wrap gap-2">
@@ -678,6 +955,103 @@ const AdminDashboard = () => {
            </div>
         )}
       </main>
+
+      {/* ✅ MODAL: Admin Dashboard Detail */}
+      {selectedJob && (
+         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
+               {/* Header */}
+               <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50">
+                  <div>
+                     <h2 className="text-xl font-bold text-slate-800">{selectedJob.title}</h2>
+                     <p className="text-slate-500 text-sm flex items-center gap-2 mt-1">
+                        <Building2 size={14}/> {selectedJob.companyName}
+                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                        <Users size={14}/> รับ {selectedJob.headcount} อัตรา
+                     </p>
+                  </div>
+                  <button onClick={() => setSelectedJob(null)} className="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full p-2 transition-colors"><X size={20}/></button>
+               </div>
+               
+               {/* Body */}
+               <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+                  <div className="grid lg:grid-cols-3 gap-6 h-full">
+                     {/* Left: Job Info */}
+                     <div className="lg:col-span-1 space-y-4">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                           <h4 className="font-bold text-slate-700 mb-3 border-b pb-2">สถานะงาน</h4>
+                           <div className="flex items-center justify-between mb-4">
+                              <span className="text-sm text-slate-500">ยอดจอง (Interested)</span>
+                              <span className="text-xl font-bold text-orange-600">{selectedJob.interestedCandidates?.length || 0} คน</span>
+                           </div>
+                           <div className="w-full bg-slate-100 rounded-full h-2 mb-1">
+                              <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${Math.min(((selectedJob.interestedCandidates?.length||0) / selectedJob.headcount)*100, 100)}%` }}></div>
+                           </div>
+                           <div className="text-xs text-right text-slate-400">เป้าหมาย: {selectedJob.headcount} คน</div>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                           <h4 className="font-bold text-slate-700 mb-3 border-b pb-2">รายละเอียด</h4>
+                           <div className="space-y-3 text-sm">
+                              <div><div className="text-xs text-slate-400">ค่าจ้าง</div><div className="font-medium text-green-600">{selectedJob.wage} บาท/วัน</div></div>
+                              <div><div className="text-xs text-slate-400">ระยะเวลา</div><div className="font-medium text-slate-800">{formatDateThai(selectedJob.startDate)} - {formatDateThai(selectedJob.endDate)}</div></div>
+                              <div><div className="text-xs text-slate-400">ทักษะ</div><div className="flex flex-wrap gap-1 mt-1">{selectedJob.requiredSkills?.map(s=><span key={s} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[10px]">{s}</span>)}</div></div>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Right: Candidates List (Tabs) */}
+                     <div className="lg:col-span-2 flex flex-col">
+                        <div className="flex gap-2 mb-4 bg-white p-1 rounded-xl border border-slate-200 w-fit">
+                           <button onClick={()=>setMatchTab('interested')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all ${matchTab==='interested' ? 'bg-orange-100 text-orange-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                              <Hand size={16} className="mr-2"/> คนที่สนใจ ({selectedJob.interestedCandidates?.length || 0})
+                           </button>
+                           <button onClick={()=>setMatchTab('auto')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all ${matchTab==='auto' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                              <Star size={16} className="mr-2"/> ระบบแนะนำ ({selectedJob.matches.length})
+                           </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                           {matchTab === 'interested' ? (
+                              // ✅ Tab 1: Interested Candidates (Hand Raise)
+                              (selectedJob.interestedCandidates && selectedJob.interestedCandidates.length > 0) ? (
+                                 selectedJob.interestedCandidates
+                                    .sort((a,b) => new Date(a.appliedAt) - new Date(b.appliedAt)) // Sort by Time (FIFO)
+                                    .map((candidate, idx) => (
+                                       <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-orange-300 transition-all group">
+                                          <div className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-700 font-bold rounded-full text-sm shrink-0">#{idx+1}</div>
+                                          <div className="flex-1">
+                                             <div className="font-bold text-slate-800">{candidate.name}</div>
+                                             <div className="text-xs text-slate-400 flex items-center gap-2">
+                                                <Timer size={12}/> กดเมื่อ: {formatDateTimeThai(candidate.appliedAt)}
+                                             </div>
+                                          </div>
+                                          <a href={`tel:${candidate.phone}`} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600 flex items-center"><Phone size={14} className="mr-2"/> โทร</a>
+                                       </div>
+                                    ))
+                              ) : <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-dashed"><Hand size={32} className="mx-auto mb-2 opacity-50"/>ยังไม่มีคนกดสนใจงานนี้</div>
+                           ) : (
+                              // ✅ Tab 2: Auto Match (AI)
+                              selectedJob.matches.length > 0 ? (
+                                 selectedJob.matches.map((worker) => (
+                                    <div key={worker.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-indigo-300 transition-all">
+                                       <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm border-2 shrink-0 ${worker.score >= 80 ? 'border-green-200 bg-green-50 text-green-700' : 'border-orange-200 bg-orange-50 text-orange-700'}`}>{worker.score}%</div>
+                                       <div className="flex-1">
+                                          <div className="font-bold text-slate-800">{worker.name}</div>
+                                          <div className="text-xs text-slate-500">{worker.education} • {worker.skills?.join(', ')}</div>
+                                       </div>
+                                       <a href={`tel:${worker.phone}`} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center"><Phone size={14} className="mr-2"/> โทร</a>
+                                    </div>
+                                 ))
+                              ) : <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-dashed"><Star size={32} className="mx-auto mb-2 opacity-50"/>ไม่มีคนที่ตรงเงื่อนไข</div>
+                           )}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 };
@@ -686,16 +1060,30 @@ const AdminDashboard = () => {
 // Main App Component
 // ==========================================
 export default function App() {
-  const [isAdminMode, setIsAdminMode] = useState(true);
+  const [viewMode, setViewMode] = useState('admin');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
     const isLineApp = /Line/i.test(navigator.userAgent);
-    if (mode === 'register' || isLineApp) {
-      setIsAdminMode(false);
+
+    if (mode === 'register') {
+      setViewMode('register');
+    } else if (mode === 'jobs') {
+      setViewMode('jobs');
+    } else if (isLineApp) {
+      // Default behavior inside LINE
+      setViewMode('register');
+    } else {
+      setViewMode('admin');
     }
   }, []);
 
-  return isAdminMode ? <AdminDashboard /> : <RegistrationView />;
+  return (
+    <>
+      {viewMode === 'admin' && <AdminDashboard />}
+      {viewMode === 'register' && <RegistrationView />}
+      {viewMode === 'jobs' && <ClientJobSearch onRedirectRegister={() => setViewMode('register')} />}
+    </>
+  );
 }
