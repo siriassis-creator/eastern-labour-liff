@@ -9,15 +9,11 @@ import {
   arrayUnion, arrayRemove, getDocs 
 } from 'firebase/firestore';
 import { 
-  getStorage, ref, uploadBytes, getDownloadURL 
-} from 'firebase/storage'; // ✅ เพิ่ม Storage
-import { 
   Users, Briefcase, Plus, Save, Trash2, Edit2, AlertTriangle, MapPin, 
   ChevronLeft, Home, X, CheckCircle2, XCircle, Settings, Building2, 
   Wrench, Phone, MessageSquare, GraduationCap, Calendar, PieChart, 
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
-  UserCheck, Smartphone, Send, Check, LogIn, BookOpen, UploadCloud, 
-  Image as ImageIcon, File, CreditCard, User
+  UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -37,7 +33,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app); // ✅ Init Storage
 
 // --- Default Data ---
 const DEFAULT_SKILLS = ["ขับรถ", "แม่บ้าน", "ยกของ", "ช่างไฟ", "ทำอาหาร", "เสิร์ฟ", "พนักงานขาย", "IT Support", "แปลภาษา", "ดูแลผู้สูงอายุ", "PC", "MC"];
@@ -55,20 +50,6 @@ const formatDateTime = (timestamp) => {
   if (!timestamp) return '-';
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
   return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
-};
-
-// ✅ ฟังก์ชันอัปโหลดไฟล์
-const uploadFileToStorage = async (file, folder = 'uploads') => {
-  if (!file) return null;
-  try {
-    const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
-  } catch (error) {
-    console.error("Upload failed:", error);
-    alert("อัปโหลดไม่สำเร็จ: กรุณาตรวจสอบว่าเปิดใช้งาน Firebase Storage แล้ว");
-    return null;
-  }
 };
 
 // --- Components ---
@@ -194,12 +175,10 @@ const ReportsView = ({ workers, jobs }) => (
 
 // --- Registration View (LIFF) ---
 const RegistrationView = () => {
-  // ✅ เพิ่มฟิลด์ใหม่: idCard, address, experience, refPerson, training, photo, documents
   const [formData, setFormData] = useState({ 
     name: '', phone: '', education: '', skills: [], 
     idCard: '', address: '', experience: '', 
     refName: '', refPhone: '', training: '',
-    photoUrl: '', docUrls: [],
     lineUserId: '', lineDisplayName: '', linePictureUrl: ''
   });
   
@@ -208,7 +187,6 @@ const RegistrationView = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
   const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     let unsubConfig = () => {};
@@ -247,26 +225,6 @@ const RegistrationView = () => {
   }, []);
 
   const handleLogin = () => liff.login(); 
-
-  const handleFileUpload = async (e, type) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    
-    if (type === 'photo') {
-      const url = await uploadFileToStorage(files[0], 'profiles');
-      if (url) setFormData(prev => ({ ...prev, photoUrl: url }));
-    } else if (type === 'doc') {
-      // Allow multiple docs
-      const newUrls = [];
-      for (let i = 0; i < files.length; i++) {
-        const url = await uploadFileToStorage(files[i], 'documents');
-        if (url) newUrls.push(url);
-      }
-      setFormData(prev => ({ ...prev, docUrls: [...prev.docUrls, ...newUrls] }));
-    }
-    setUploading(false);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -325,7 +283,7 @@ const RegistrationView = () => {
         ) : (
            <form onSubmit={handleSubmit} className="p-6 space-y-5 animate-slide-up">
              
-             {/* ส่วนที่ 1: ข้อมูลส่วนตัว */}
+             {/* ข้อมูลส่วนตัว */}
              <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 border-b pb-2 flex items-center"><User size={18} className="mr-2 text-indigo-600"/> ข้อมูลส่วนตัว</h3>
                 <div><label className="text-sm font-bold block mb-1">ชื่อ-นามสกุล <span className="text-red-500">*</span></label><input className="w-full border p-3 rounded-xl" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}/></div>
@@ -334,7 +292,7 @@ const RegistrationView = () => {
                 <div><label className="text-sm font-bold block mb-1">ที่อยู่ปัจจุบัน</label><textarea className="w-full border p-3 rounded-xl" rows={3} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})}/></div>
              </div>
 
-             {/* ส่วนที่ 2: การศึกษาและงาน */}
+             {/* การศึกษาและงาน */}
              <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 border-b pb-2 flex items-center"><Briefcase size={18} className="mr-2 text-orange-600"/> การทำงาน & ทักษะ</h3>
                 <div>
@@ -348,7 +306,7 @@ const RegistrationView = () => {
                 <div><label className="text-sm font-bold block mb-2">ทักษะ</label><div className="flex flex-wrap gap-2">{skillsList.map(skill => (<button type="button" key={skill} onClick={() => toggleSkill(skill)} className={`px-3 py-1 text-xs rounded-full border ${formData.skills.includes(skill) ? 'bg-yellow-100 border-yellow-500 text-yellow-800' : 'bg-white'}`}>{skill}</button>))}</div></div>
              </div>
 
-             {/* ส่วนที่ 3: บุคคลอ้างอิง */}
+             {/* บุคคลอ้างอิง */}
              <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 border-b pb-2 flex items-center"><Users size={18} className="mr-2 text-green-600"/> บุคคลอ้างอิง</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -357,41 +315,7 @@ const RegistrationView = () => {
                 </div>
              </div>
 
-             {/* ส่วนที่ 4: เอกสารและรูปภาพ */}
-             <div className="space-y-4">
-                <h3 className="font-bold text-slate-800 border-b pb-2 flex items-center"><UploadCloud size={18} className="mr-2 text-blue-600"/> แนบเอกสาร</h3>
-                
-                {/* รูปถ่าย */}
-                <div>
-                   <label className="text-sm font-bold block mb-2">รูปถ่ายหน้าตรง</label>
-                   <div className="flex items-center gap-4">
-                      {formData.photoUrl && <img src={formData.photoUrl} className="w-16 h-16 rounded object-cover border"/>}
-                      <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center text-sm">
-                         <ImageIcon size={16} className="mr-2"/> {uploading ? 'กำลังอัปโหลด...' : 'เลือกรูปภาพ'}
-                         <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'photo')} disabled={uploading}/>
-                      </label>
-                   </div>
-                </div>
-
-                {/* เอกสารอื่นๆ */}
-                <div>
-                   <label className="text-sm font-bold block mb-2">เอกสารเพิ่มเติม (สำเนาบัตร/ทะเบียนบ้าน)</label>
-                   <label className="cursor-pointer border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl p-4 flex flex-col items-center justify-center text-slate-500 transition-all bg-slate-50">
-                      <UploadCloud size={24} className="mb-2 text-slate-400"/>
-                      <span className="text-xs">{uploading ? 'กำลังอัปโหลด...' : 'แตะเพื่ออัปโหลดไฟล์'}</span>
-                      <input type="file" className="hidden" multiple onChange={(e) => handleFileUpload(e, 'doc')} disabled={uploading}/>
-                   </label>
-                   {formData.docUrls.length > 0 && (
-                     <div className="mt-2 space-y-1">
-                        {formData.docUrls.map((url, idx) => (
-                           <div key={idx} className="flex items-center text-xs text-blue-600 bg-blue-50 p-2 rounded"><File size={12} className="mr-2"/> เอกสารแนบ {idx + 1}</div>
-                        ))}
-                     </div>
-                   )}
-                </div>
-             </div>
-
-             <button type="submit" disabled={isSubmitting || uploading} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex justify-center items-center">{isSubmitting ? <Clock className="animate-spin mr-2"/> : <Send className="mr-2" size={20}/>} ส่งใบสมัคร</button>
+             <button type="submit" disabled={isSubmitting} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex justify-center items-center">{isSubmitting ? <Clock className="animate-spin mr-2"/> : <Send className="mr-2" size={20}/>} ส่งใบสมัคร</button>
            </form>
         )}
         <div className="bg-slate-50 p-4 text-center text-xs text-slate-400">Power by EASTERN LABOUR System</div>
@@ -411,14 +335,12 @@ const AdminDashboard = () => {
   const [configModalType, setConfigModalType] = useState(null);
   const [permissionError, setPermissionError] = useState(false);
   
-  // ✅ เพิ่มฟิลด์ใหม่ใน State ของ Admin Form
   const [workerForm, setWorkerForm] = useState({ 
-    name: '', phone: '', lineId: '', lineDisplayName: '', source: 'office', 
+    name: '', phone: '', lineId: '', lineDisplayName: '', linePictureUrl: '', source: 'office', 
     skills: [], education: '', status: 'active',
-    idCard: '', address: '', experience: '', refName: '', refPhone: '', training: '', photoUrl: '', docUrls: []
+    idCard: '', address: '', experience: '', refName: '', refPhone: '', training: ''
   });
   const [jobForm, setJobForm] = useState({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     let unsubWorkers = () => {};
@@ -448,24 +370,6 @@ const AdminDashboard = () => {
     return () => { authUnsub(); unsubWorkers(); unsubJobs(); unsubConfig(); };
   }, []);
 
-  const handleFileUploadAdmin = async (e, type) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    if (type === 'photo') {
-      const url = await uploadFileToStorage(files[0], 'profiles');
-      if (url) setWorkerForm(prev => ({ ...prev, photoUrl: url }));
-    } else if (type === 'doc') {
-      const newUrls = [];
-      for (let i = 0; i < files.length; i++) {
-        const url = await uploadFileToStorage(files[i], 'documents');
-        if (url) newUrls.push(url);
-      }
-      setWorkerForm(prev => ({ ...prev, docUrls: [...(prev.docUrls || []), ...newUrls] }));
-    }
-    setUploading(false);
-  };
-
   const handleSaveWorker = async () => {
     try {
       const payload = { ...workerForm, role: 'worker', updatedAt: serverTimestamp() };
@@ -490,7 +394,7 @@ const AdminDashboard = () => {
 
   const goBack = () => {
     setEditingId(null);
-    setWorkerForm({ name: '', phone: '', lineId: '', lineDisplayName: '', source: 'office', skills: [], education: '', status: 'active', idCard: '', address: '', experience: '', refName: '', refPhone: '', training: '', photoUrl: '', docUrls: [] });
+    setWorkerForm({ name: '', phone: '', lineId: '', lineDisplayName: '', linePictureUrl: '', source: 'office', skills: [], education: '', status: 'active', idCard: '', address: '', experience: '', refName: '', refPhone: '', training: '' });
     setJobForm({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
     if (currentView === 'recruitment' && editingId) setCurrentView('recruitment');
     else if ((currentView === 'worker-form' || currentView === 'job-form') && editingId) setCurrentView(currentView === 'worker-form' ? 'workers-list' : 'jobs-list');
@@ -548,7 +452,6 @@ const AdminDashboard = () => {
                 <AppIcon icon={PlusCircle} label="งานใหม่" color="bg-gradient-to-br from-orange-500 to-orange-600" onClick={() => setCurrentView('job-form')} />
                 <AppIcon icon={FileText} label="รายงาน" color="bg-gradient-to-br from-slate-600 to-slate-700" onClick={() => setCurrentView('reports')} />
              </div>
-             {/* ❌ เอาลิงก์ Test Line OA ออกตามคำขอ */}
           </div>
         )}
 
@@ -556,7 +459,7 @@ const AdminDashboard = () => {
         {currentView === 'reports' && <ReportsView workers={workers} jobs={jobs} />}
 
         {currentView === 'recruitment' && (
-           <div className="p-6 w-full space-y-6"> {/* ✅ เปลี่ยนจาก max-w-6xl เป็น w-full เพื่อขยายเต็มจอ */}
+           <div className="p-6 w-full space-y-6">
               <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                  <div><h3 className="text-xl font-bold text-slate-800 flex items-center"><Smartphone size={24} className="mr-2 text-green-600"/> ใบสมัครจาก Line OA</h3><p className="text-slate-500 text-sm mt-1">รายการรอตรวจสอบ ({pendingWorkers.length})</p></div>
                  <div className="flex gap-2">
@@ -568,10 +471,10 @@ const AdminDashboard = () => {
                     <table className="w-full text-left whitespace-nowrap">
                        <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
                           <tr>
-                             <th className="p-4">ช่องทาง</th>
+                             <th className="p-4">ช่องทาง / LINE</th> {/* ✅ เพิ่ม Header */}
                              <th className="p-4">ชื่อ</th>
                              <th className="p-4">เบอร์โทร</th>
-                             <th className="p-4">วุฒิ</th> {/* ✅ เพิ่มคอลัมน์วุฒิ */}
+                             <th className="p-4">วุฒิ</th>
                              <th className="p-4">ทักษะ</th>
                              <th className="p-4 text-right">ดำเนินการ</th>
                           </tr>
@@ -579,10 +482,21 @@ const AdminDashboard = () => {
                        <tbody className="divide-y divide-slate-100">
                           {pendingWorkers.map(w => (
                              <tr key={w.id} className="hover:bg-orange-50/30 transition-colors">
-                                <td className="p-4"><span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700"><Smartphone size={10} className="mr-1"/> Line OA</span></td>
+                                <td className="p-4">
+                                   <div className="flex flex-col gap-1">
+                                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700 w-fit"><Smartphone size={10} className="mr-1"/> Line OA</span>
+                                      {/* ✅ แสดงชื่อ LINE ตรงนี้ */}
+                                      {w.lineDisplayName && (
+                                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                            {w.linePictureUrl ? <img src={w.linePictureUrl} className="w-5 h-5 rounded-full border"/> : <User size={14}/>}
+                                            {w.lineDisplayName}
+                                         </div>
+                                      )}
+                                   </div>
+                                </td>
                                 <td className="p-4 font-bold text-slate-800">{w.name}</td>
                                 <td className="p-4 font-mono">{w.phone}</td>
-                                <td className="p-4">{w.education || '-'}</td> {/* ✅ แสดงวุฒิ */}
+                                <td className="p-4">{w.education || '-'}</td>
                                 <td className="p-4"><div className="flex gap-1 flex-wrap max-w-[200px]">{w.skills?.slice(0,3).map(s => <span key={s} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-500">{s}</span>)}</div></td>
                                 <td className="p-4 text-right">
                                    <div className="flex justify-end gap-2">
@@ -604,10 +518,20 @@ const AdminDashboard = () => {
             <div className="p-6">
                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                   <table className="w-full text-left">
-                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-4">ชื่อ</th><th className="p-4">เบอร์โทร</th><th className="p-4">วุฒิ</th><th className="p-4">สถานะ</th><th className="p-4 text-right">จัดการ</th></tr></thead>
+                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-4">LINE Profile</th><th className="p-4">ชื่อ</th><th className="p-4">เบอร์โทร</th><th className="p-4">วุฒิ</th><th className="p-4">สถานะ</th><th className="p-4 text-right">จัดการ</th></tr></thead>
                      <tbody className="divide-y divide-slate-100">
                         {workers.filter(w=>w.status!=='pending').map(w => (
-                           <tr key={w.id} className="hover:bg-slate-50"><td className="p-4 font-bold">{w.name}</td><td className="p-4">{w.phone}</td><td className="p-4">{w.education||'-'}</td><td className="p-4"><StatusBadge status={w.status}/></td><td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(w,'worker')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('users', w.id)}><Trash2 size={16}/></button></td></tr>
+                           <tr key={w.id} className="hover:bg-slate-50">
+                              <td className="p-4">
+                                 {/* ✅ แสดง LINE Profile ในหน้ารวม */}
+                                 {w.lineDisplayName ? (
+                                    <div className="flex items-center gap-2">
+                                       {w.linePictureUrl ? <img src={w.linePictureUrl} className="w-8 h-8 rounded-full border"/> : <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center"><User size={16}/></div>}
+                                       <div className="text-xs font-medium text-slate-600">{w.lineDisplayName}</div>
+                                    </div>
+                                 ) : <span className="text-xs text-slate-400">-</span>}
+                              </td>
+                              <td className="p-4 font-bold">{w.name}</td><td className="p-4">{w.phone}</td><td className="p-4">{w.education||'-'}</td><td className="p-4"><StatusBadge status={w.status}/></td><td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(w,'worker')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('users', w.id)}><Trash2 size={16}/></button></td></tr>
                         ))}
                      </tbody>
                   </table>
@@ -636,11 +560,18 @@ const AdminDashboard = () => {
                  {currentView === 'worker-form' ? (
                     <>
                       <div className="flex items-center gap-4 border-b pb-4">
-                         {workerForm.photoUrl ? <img src={workerForm.photoUrl} className="w-20 h-20 rounded object-cover border"/> : <div className="w-20 h-20 rounded bg-slate-100 flex items-center justify-center text-slate-400"><User size={32}/></div>}
-                         <div>
-                            <label className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer hover:bg-indigo-100">{uploading ? '...' : 'เปลี่ยนรูป'} <input type="file" className="hidden" accept="image/*" onChange={e=>handleFileUploadAdmin(e,'photo')} disabled={uploading}/></label>
-                         </div>
+                         {/* ✅ แสดง User ที่ผูกบัญชี */}
+                         {workerForm.lineDisplayName ? (
+                            <div className="flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-100 w-full">
+                               {workerForm.linePictureUrl ? <img src={workerForm.linePictureUrl} className="w-12 h-12 rounded-full border-2 border-white shadow-sm"/> : <div className="w-12 h-12 rounded-full bg-green-200 flex items-center justify-center text-green-700"><User size={24}/></div>}
+                               <div>
+                                  <div className="text-xs text-green-600 font-bold uppercase tracking-wider">Connected LINE Account</div>
+                                  <div className="font-bold text-slate-800">{workerForm.lineDisplayName}</div>
+                               </div>
+                            </div>
+                         ) : <div className="p-3 bg-slate-50 rounded-xl w-full text-slate-400 text-sm flex items-center"><User size={20} className="mr-2"/> ไม่ได้เชื่อมต่อ LINE</div>}
                       </div>
+
                       <div className="grid md:grid-cols-2 gap-6">
                          <div><label className="text-sm font-bold block mb-1">ชื่อ-นามสกุล</label><input className="w-full border p-2 rounded" value={workerForm.name} onChange={e=>setWorkerForm({...workerForm, name: e.target.value})}/></div>
                          <div><label className="text-sm font-bold block mb-1">เบอร์โทร</label><input className="w-full border p-2 rounded" value={workerForm.phone} onChange={e=>setWorkerForm({...workerForm, phone: e.target.value})}/></div>
@@ -671,16 +602,6 @@ const AdminDashboard = () => {
                          <div className="md:col-span-2">
                             <label className="text-sm font-bold block mb-2">ทักษะ</label>
                             <div className="flex flex-wrap gap-2">{skillsList.map(s=><button key={s} onClick={()=>toggleArrayItem(s,'worker','skills')} className={`px-2 py-1 rounded border ${workerForm.skills.includes(s)?'bg-indigo-600 text-white':'bg-white'}`}>{s}</button>)}</div>
-                         </div>
-
-                         <div className="md:col-span-2 border-t pt-4">
-                            <label className="text-sm font-bold block mb-2">เอกสารแนบ</label>
-                            <div className="space-y-2">
-                               {workerForm.docUrls && workerForm.docUrls.map((url, i) => (
-                                 <div key={i} className="flex items-center text-sm text-blue-600 bg-blue-50 p-2 rounded"><File size={14} className="mr-2"/> <a href={url} target="_blank" className="underline hover:text-blue-800">เอกสาร {i+1}</a></div>
-                               ))}
-                               <label className="inline-flex items-center px-4 py-2 bg-slate-200 rounded text-sm font-bold cursor-pointer hover:bg-slate-300"><UploadCloud size={16} className="mr-2"/> อัปโหลดเพิ่ม <input type="file" multiple className="hidden" onChange={e=>handleFileUploadAdmin(e,'doc')} disabled={uploading}/></label>
-                            </div>
                          </div>
                       </div>
                     </>
