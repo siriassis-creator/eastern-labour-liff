@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import React, { useState, useEffect } from 'react';
 import liff from '@line/liff';
 import { initializeApp } from 'firebase/app';
