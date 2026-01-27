@@ -641,14 +641,20 @@ const AdminDashboard = () => {
 };
 
 // ==========================================
-// Main App Component
+// Main App Component (แก้ไขส่วนนี้)
 // ==========================================
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('mode') === 'register') {
+    const mode = params.get('mode');
+    
+    // เช็คว่าเป็นแอพ LINE หรือไม่ (ถ้าใช่ ให้เด้งไปหน้าสมัครงานเลย)
+    const isLineApp = /Line/i.test(navigator.userAgent);
+
+    // เงื่อนไข: ถ้ามี ?mode=register หรือเปิดใน LINE ให้ไปหน้าสมัครงาน (RegistrationView)
+    if (mode === 'register' || isLineApp) {
       setIsAdminMode(false);
     }
   }, []);
