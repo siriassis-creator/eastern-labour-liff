@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import liff from '@line/liff';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'; // ✅ เพิ่ม onAuthStateChanged
 import { 
   getFirestore, collection, addDoc, query, onSnapshot, orderBy, 
   serverTimestamp, doc, updateDoc, deleteDoc, where, setDoc, 
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 // --- ⚠️ IMPORTANT: Replace with your actual LIFF ID ---
-const MY_LIFF_ID = "YOUR_LIFF_ID_HERE"; 
+const MY_LIFF_ID = "2008980414-aaHkCCCk"; 
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -42,7 +42,6 @@ const DEFAULT_COMPANIES = ["CP All", "Central Group", "ThaiBev", "True Corp", "S
 // --- Helpers ---
 const formatDate = (timestamp) => {
   if (!timestamp) return '-';
-  // Handle both Firestore Timestamp and JS Date
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
   return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
@@ -54,7 +53,6 @@ const formatDateTime = (timestamp) => {
 };
 
 // --- Components ---
-
 const StatusBadge = ({ status }) => {
   const styles = {
     active: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -262,8 +260,20 @@ const RegistrationView = () => {
   const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
 
   useEffect(() => {
-    // Auth for Firestore
-    signInAnonymously(auth).catch(err => console.error("Auth Error:", err));
+    // แก้ไข: รอให้ Login สำเร็จก่อนค่อยดึงข้อมูล
+    let unsubConfig = () => {};
+
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+       if (user) {
+          // ดึง Config เมื่อ Login แล้ว
+          unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
+             if (doc.exists() && doc.data().skills) setSkillsList(doc.data().skills);
+          });
+       } else {
+          // ถ้ายังไม่ Login ให้ทำ Anonymous Login
+          signInAnonymously(auth).catch(err => console.error("Auth Error:", err));
+       }
+    });
 
     // LIFF Init
     const initLiff = async () => {
@@ -289,11 +299,7 @@ const RegistrationView = () => {
     };
     initLiff();
 
-    // Load Skills
-    const unsub = onSnapshot(doc(db, 'system_settings', 'config'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().skills) setSkillsList(docSnap.data().skills);
-    });
-    return () => unsub();
+    return () => { authUnsub(); unsubConfig(); };
   }, []);
 
   const handleLogin = () => liff.login(); 
@@ -396,30 +402,50 @@ const AdminDashboard = () => {
   const [jobForm, setJobForm] = useState({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
 
   useEffect(() => {
-    signInAnonymously(auth).catch(err => console.error("Login failed:", err));
-    
-    const unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker'), orderBy('registeredAt', 'desc')), 
-      (snap) => { setPermissionError(false); setWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, 
-      (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
-    );
+    // ✅ แก้ไข: รอให้ Login สำเร็จก่อนค่อยเริ่มดึงข้อมูล (Snapshot)
+    let unsubWorkers = () => {};
+    let unsubJobs = () => {};
+    let unsubConfig = () => {};
 
-    const unsubJobs = onSnapshot(query(collection(db, 'jobs'), orderBy('createdAt', 'desc')), 
-      (snap) => { setPermissionError(false); setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, 
-      (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
-    );
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // --- 1. User Login แล้ว -> ดึงข้อมูลได้ ---
+        setPermissionError(false);
+        
+        unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker'), orderBy('registeredAt', 'desc')), 
+          (snap) => setWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() }))), 
+          (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
+        );
 
-    const unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
-      if (doc.exists()) { 
-        setSkillsList(doc.data().skills || DEFAULT_SKILLS); 
-        setCompaniesList(doc.data().companies || DEFAULT_COMPANIES); 
-      } else { 
-        setDoc(doc(db, 'system_settings', 'config'), { skills: DEFAULT_SKILLS, companies: DEFAULT_COMPANIES }); 
-        setSkillsList(DEFAULT_SKILLS); 
-        setCompaniesList(DEFAULT_COMPANIES); 
+        unsubJobs = onSnapshot(query(collection(db, 'jobs'), orderBy('createdAt', 'desc')), 
+          (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))), 
+          (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
+        );
+
+        unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
+          if (doc.exists()) { 
+            setSkillsList(doc.data().skills || DEFAULT_SKILLS); 
+            setCompaniesList(doc.data().companies || DEFAULT_COMPANIES); 
+          } else { 
+            // Create default config if missing
+            setDoc(doc(db, 'system_settings', 'config'), { skills: DEFAULT_SKILLS, companies: DEFAULT_COMPANIES }); 
+            setSkillsList(DEFAULT_SKILLS); 
+            setCompaniesList(DEFAULT_COMPANIES); 
+          }
+        });
+
+      } else {
+        // --- 2. ยังไม่ Login -> สั่ง Login (แล้วรอมันวิ่งกลับไปเข้า if ข้างบน) ---
+        signInAnonymously(auth).catch(err => console.error("Login failed:", err));
       }
     });
 
-    return () => { unsubWorkers(); unsubJobs(); unsubConfig(); };
+    return () => { 
+      authUnsub(); 
+      unsubWorkers(); 
+      unsubJobs(); 
+      unsubConfig(); 
+    };
   }, []);
 
   const simulateLineApplication = async () => {
@@ -508,12 +534,12 @@ const AdminDashboard = () => {
                 <p className="text-slate-500 font-medium">ระบบจัดการฐานข้อมูลและทรัพยากรบุคคล</p>
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 max-w-4xl w-full animate-fade-in-up delay-100">
-                <AppIcon icon={Users} label="1. ฐานข้อมูลพนักงาน" color="bg-gradient-to-br from-blue-500 to-blue-600" badge={workers.filter(w => w.status === 'active').length} onClick={() => setCurrentView('workers-list')} />
-                <AppIcon icon={Building2} label="2. ฐานข้อมูลบริษัท" color="bg-gradient-to-br from-indigo-500 to-indigo-600" badge={jobs.length} onClick={() => setCurrentView('jobs-list')} />
-                <AppIcon icon={PieChart} label="3. Dashboard" color="bg-gradient-to-br from-purple-500 to-purple-600" onClick={() => setCurrentView('dashboard')} />
-                <AppIcon icon={UserPlus} label="4. พนักงานใหม่" color="bg-gradient-to-br from-emerald-500 to-emerald-600" badge={pendingWorkers.length} onClick={() => setCurrentView('recruitment')} />
-                <AppIcon icon={PlusCircle} label="5. งานใหม่" color="bg-gradient-to-br from-orange-500 to-orange-600" onClick={() => setCurrentView('job-form')} />
-                <AppIcon icon={FileText} label="6. รายงาน" color="bg-gradient-to-br from-slate-600 to-slate-700" onClick={() => setCurrentView('reports')} />
+                <AppIcon icon={Users} label="ฐานข้อมูลพนักงาน" color="bg-gradient-to-br from-blue-500 to-blue-600" badge={workers.filter(w => w.status === 'active').length} onClick={() => setCurrentView('workers-list')} />
+                <AppIcon icon={Building2} label="ฐานข้อมูลบริษัท" color="bg-gradient-to-br from-indigo-500 to-indigo-600" badge={jobs.length} onClick={() => setCurrentView('jobs-list')} />
+                <AppIcon icon={PieChart} label="Dashboard" color="bg-gradient-to-br from-purple-500 to-purple-600" onClick={() => setCurrentView('dashboard')} />
+                <AppIcon icon={UserPlus} label="พนักงานใหม่" color="bg-gradient-to-br from-emerald-500 to-emerald-600" badge={pendingWorkers.length} onClick={() => setCurrentView('recruitment')} />
+                <AppIcon icon={PlusCircle} label="งานใหม่" color="bg-gradient-to-br from-orange-500 to-orange-600" onClick={() => setCurrentView('job-form')} />
+                <AppIcon icon={FileText} label="รายงาน" color="bg-gradient-to-br from-slate-600 to-slate-700" onClick={() => setCurrentView('reports')} />
              </div>
              <div className="mt-12"><a href="?mode=register" target="_blank" className="text-xs text-indigo-500 hover:underline flex items-center"><Smartphone size={12} className="mr-1"/> ลิงก์สำหรับ Line OA (คลิกเพื่อทดสอบ)</a></div>
           </div>
