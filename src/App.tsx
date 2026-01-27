@@ -6,14 +6,14 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, addDoc, query, onSnapshot, orderBy, 
   serverTimestamp, doc, updateDoc, deleteDoc, where, setDoc, 
-  arrayUnion, arrayRemove 
+  arrayUnion, arrayRemove, getDocs 
 } from 'firebase/firestore';
 import { 
   Users, Briefcase, Plus, Save, Trash2, Edit2, AlertTriangle, MapPin, 
   ChevronLeft, Home, X, CheckCircle2, XCircle, Settings, Building2, 
   Wrench, Phone, MessageSquare, GraduationCap, Calendar, PieChart, 
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
-  UserCheck, Smartphone, Send, Check, LogIn
+  UserCheck, Smartphone, Send, Check, LogIn, BookOpen
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -37,6 +37,7 @@ const db = getFirestore(app);
 // --- Default Data ---
 const DEFAULT_SKILLS = ["ขับรถ", "แม่บ้าน", "ยกของ", "ช่างไฟ", "ทำอาหาร", "เสิร์ฟ", "พนักงานขาย", "IT Support", "แปลภาษา", "ดูแลผู้สูงอายุ", "PC", "MC"];
 const DEFAULT_COMPANIES = ["CP All", "Central Group", "ThaiBev", "True Corp", "SCG", "PTT", "Big C", "Lotus's"];
+const EDUCATION_LEVELS = ["ต่ำกว่า ม.6", "ม.6", "ปวช.", "ปวส. / อนุปริญญา", "ปริญญาตรี", "ปริญญาโท หรือสูงกว่า"];
 
 // --- Helpers ---
 const formatDate = (timestamp) => {
@@ -256,6 +257,7 @@ const RegistrationView = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false); // ✅ สถานะเคยสมัครแล้ว
   const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
 
   useEffect(() => {
@@ -276,6 +278,15 @@ const RegistrationView = () => {
         await liff.init({ liffId: MY_LIFF_ID });
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
+          
+          // ✅ ตรวจสอบว่าเคยสมัครหรือยัง (Check Duplicate)
+          const q = query(collection(db, 'users'), where('lineUserId', '==', profile.userId));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            setIsAlreadyRegistered(true); // เจอประวัติ -> แจ้งเตือน
+          }
+
           setFormData(prev => ({
             ...prev,
             lineUserId: profile.userId,
@@ -316,7 +327,6 @@ const RegistrationView = () => {
       });
       
       if (liff.isInClient()) {
-        // await liff.sendMessages([{ type: 'text', text: `ได้รับใบสมัครเรียบร้อยแล้ว` }]); 
         liff.closeWindow();
       } else {
         setIsSuccess(true);
@@ -335,6 +345,27 @@ const RegistrationView = () => {
   };
 
   if (!liffState.isInit) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500">กำลังโหลดระบบรับสมัคร...</div>;
+
+  // ✅ หน้าจอแจ้งเตือนเมื่อเคยสมัครแล้ว
+  if (isAlreadyRegistered) return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+      <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-lg relative">
+        <UserCheck size={48} className="text-yellow-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-slate-800 mb-2">ท่านลงทะเบียนแล้ว</h2>
+      <p className="text-slate-500 mb-8 max-w-xs mx-auto">
+        ข้อมูลของท่านอยู่ในระบบเรียบร้อยแล้ว <br/>
+        หากต้องการแก้ไขข้อมูล กรุณาติดต่อเจ้าหน้าที่
+      </p>
+      {liffState.profile && (
+         <div className="flex flex-col items-center mb-8">
+             <img src={liffState.profile.pictureUrl} alt="User" className="w-16 h-16 rounded-full border-4 border-white shadow-md mb-2"/>
+             <span className="font-bold text-slate-700">{liffState.profile.displayName}</span>
+         </div>
+      )}
+      <button onClick={() => liff.closeWindow()} className="bg-slate-800 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-900 shadow-md">ปิดหน้าต่าง</button>
+    </div>
+  );
 
   if (isSuccess) return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
@@ -370,10 +401,31 @@ const RegistrationView = () => {
                 <div className="w-8 h-8 bg-green-200 rounded-full flex items-center justify-center text-green-700 font-bold shrink-0">L</div>
                 <div className="text-xs text-green-800">คุณกำลังสมัครในชื่อ: <b>{liffState.profile?.displayName}</b></div>
              </div>
+             
+             {/* ชื่อ-เบอร์โทร */}
              <div><label className="block text-sm font-bold text-slate-700 mb-1">ชื่อ-นามสกุล <span className="text-red-500">*</span></label><input className="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="เช่น สมชาย ใจดี" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}/></div>
              <div><label className="block text-sm font-bold text-slate-700 mb-1">เบอร์โทรศัพท์ <span className="text-red-500">*</span></label><input className="w-full border border-slate-300 rounded-xl px-4 py-3" type="tel" placeholder="08x-xxx-xxxx" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})}/></div>
-             <div><label className="block text-sm font-bold text-slate-700 mb-1">วุฒิการศึกษา</label><input className="w-full border border-slate-300 rounded-xl px-4 py-3" placeholder="เช่น ม.6, ปวส" value={formData.education} onChange={e => setFormData({...formData, education: e.target.value})}/></div>
-             <div><label className="block text-sm font-bold text-slate-700 mb-2">ทักษะ (เลือกได้มากกว่า 1)</label><div className="flex flex-wrap gap-2">{skillsList.map(skill => (<button type="button" key={skill} onClick={() => toggleSkill(skill)} className={`px-3 py-1.5 rounded-lg text-sm border ${formData.skills.includes(skill) ? 'bg-yellow-100 border-yellow-500 text-yellow-800 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>{skill}</button>))}</div></div>
+             
+             {/* ✅ วุฒิการศึกษา (แบบปุ่มเลือก) */}
+             <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center"><GraduationCap size={16} className="mr-1"/> วุฒิการศึกษา</label>
+                <div className="grid grid-cols-2 gap-2">
+                   {EDUCATION_LEVELS.map(edu => (
+                      <button 
+                        type="button" 
+                        key={edu} 
+                        onClick={() => setFormData({...formData, education: edu})}
+                        className={`px-3 py-2 rounded-lg text-sm border transition-all ${formData.education === edu ? 'bg-indigo-100 border-indigo-500 text-indigo-700 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {edu}
+                      </button>
+                   ))}
+                </div>
+             </div>
+
+             {/* ทักษะ */}
+             <div><label className="block text-sm font-bold text-slate-700 mb-2 flex items-center"><BookOpen size={16} className="mr-1"/> ทักษะ (เลือกได้มากกว่า 1)</label><div className="flex flex-wrap gap-2">{skillsList.map(skill => (<button type="button" key={skill} onClick={() => toggleSkill(skill)} className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${formData.skills.includes(skill) ? 'bg-yellow-100 border-yellow-500 text-yellow-800 font-bold shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{skill}</button>))}</div></div>
+             
              <button type="submit" disabled={isSubmitting} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex justify-center items-center">{isSubmitting ? <Clock className="animate-spin mr-2"/> : <Send className="mr-2" size={20}/>} ส่งใบสมัคร</button>
            </form>
         )}
@@ -405,11 +457,10 @@ const AdminDashboard = () => {
       if (user) {
         setPermissionError(false);
         
-        // ⚠️ ลบ orderBy ออกเพื่อแก้ปัญหา Index Error (และเรียงข้อมูลใน Client แทน)
+        // Client-side Sort
         unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker')), 
           (snap) => {
              const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-             // Client-side Sort (ใหม่สุดขึ้นก่อน)
              data.sort((a, b) => (b.registeredAt?.seconds || 0) - (a.registeredAt?.seconds || 0));
              setWorkers(data);
           }, 
