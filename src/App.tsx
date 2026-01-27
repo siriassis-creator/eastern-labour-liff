@@ -13,7 +13,8 @@ import {
   ChevronLeft, Home, X, CheckCircle2, XCircle, Settings, Building2, 
   Wrench, Phone, MessageSquare, GraduationCap, Calendar, PieChart, 
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
-  UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User
+  UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User,
+  DollarSign, Map, File
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -38,19 +39,6 @@ const db = getFirestore(app);
 const DEFAULT_SKILLS = ["ขับรถ", "แม่บ้าน", "ยกของ", "ช่างไฟ", "ทำอาหาร", "เสิร์ฟ", "พนักงานขาย", "IT Support", "แปลภาษา", "ดูแลผู้สูงอายุ", "PC", "MC"];
 const DEFAULT_COMPANIES = ["CP All", "Central Group", "ThaiBev", "True Corp", "SCG", "PTT", "Big C", "Lotus's"];
 const EDUCATION_LEVELS = ["ต่ำกว่า ม.6", "ม.6", "ปวช.", "ปวส. / อนุปริญญา", "ปริญญาตรี", "ปริญญาโท หรือสูงกว่า"];
-
-// --- Helpers ---
-const formatDate = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
-
-const formatDateTime = (timestamp) => {
-  if (!timestamp) return '-';
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
-};
 
 // --- Components ---
 const StatusBadge = ({ status }) => {
@@ -340,7 +328,13 @@ const AdminDashboard = () => {
     skills: [], education: '', status: 'active',
     idCard: '', address: '', experience: '', refName: '', refPhone: '', training: ''
   });
-  const [jobForm, setJobForm] = useState({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
+  
+  // ✅ เพิ่มฟิลด์ใหม่: address, locationUrl, headcount, duration, note, requiredSkills
+  const [jobForm, setJobForm] = useState({ 
+    title: '', companyName: '', address: '', locationUrl: '',
+    headcount: '', duration: '', wage: '', note: '',
+    requiredSkills: [], status: 'open' 
+  });
 
   useEffect(() => {
     let unsubWorkers = () => {};
@@ -395,7 +389,8 @@ const AdminDashboard = () => {
   const goBack = () => {
     setEditingId(null);
     setWorkerForm({ name: '', phone: '', lineId: '', lineDisplayName: '', linePictureUrl: '', source: 'office', skills: [], education: '', status: 'active', idCard: '', address: '', experience: '', refName: '', refPhone: '', training: '' });
-    setJobForm({ title: '', companyName: '', description: '', location: '', wage: '', requiredSkills: [], status: 'open' });
+    // Reset Form
+    setJobForm({ title: '', companyName: '', address: '', locationUrl: '', headcount: '', duration: '', wage: '', note: '', requiredSkills: [], status: 'open' });
     if (currentView === 'recruitment' && editingId) setCurrentView('recruitment');
     else if ((currentView === 'worker-form' || currentView === 'job-form') && editingId) setCurrentView(currentView === 'worker-form' ? 'workers-list' : 'jobs-list');
     else setCurrentView('home');
@@ -471,7 +466,7 @@ const AdminDashboard = () => {
                     <table className="w-full text-left whitespace-nowrap">
                        <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
                           <tr>
-                             <th className="p-4">ช่องทาง / LINE</th> {/* ✅ เพิ่ม Header */}
+                             <th className="p-4">ช่องทาง / LINE</th>
                              <th className="p-4">ชื่อ</th>
                              <th className="p-4">เบอร์โทร</th>
                              <th className="p-4">วุฒิ</th>
@@ -485,7 +480,6 @@ const AdminDashboard = () => {
                                 <td className="p-4">
                                    <div className="flex flex-col gap-1">
                                       <span className="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-700 w-fit"><Smartphone size={10} className="mr-1"/> Line OA</span>
-                                      {/* ✅ แสดงชื่อ LINE ตรงนี้ */}
                                       {w.lineDisplayName && (
                                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
                                             {w.linePictureUrl ? <img src={w.linePictureUrl} className="w-5 h-5 rounded-full border"/> : <User size={14}/>}
@@ -523,7 +517,6 @@ const AdminDashboard = () => {
                         {workers.filter(w=>w.status!=='pending').map(w => (
                            <tr key={w.id} className="hover:bg-slate-50">
                               <td className="p-4">
-                                 {/* ✅ แสดง LINE Profile ในหน้ารวม */}
                                  {w.lineDisplayName ? (
                                     <div className="flex items-center gap-2">
                                        {w.linePictureUrl ? <img src={w.linePictureUrl} className="w-8 h-8 rounded-full border"/> : <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center"><User size={16}/></div>}
@@ -543,10 +536,27 @@ const AdminDashboard = () => {
             <div className="p-6">
                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                   <table className="w-full text-left">
-                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase"><tr><th className="p-4">ชื่องาน</th><th className="p-4">บริษัท</th><th className="p-4">ค่าจ้าง</th><th className="p-4 text-right">จัดการ</th></tr></thead>
+                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr>
+                           <th className="p-4">ชื่องาน</th>
+                           <th className="p-4">บริษัท</th>
+                           <th className="p-4">คน</th>
+                           <th className="p-4">ค่าจ้าง</th>
+                           <th className="p-4 text-right">จัดการ</th>
+                        </tr>
+                     </thead>
                      <tbody className="divide-y divide-slate-100">
                         {jobs.map(j => (
-                           <tr key={j.id} className="hover:bg-slate-50"><td className="p-4 font-bold">{j.title}</td><td className="p-4">{j.companyName}</td><td className="p-4 text-green-600 font-bold">{j.wage}</td><td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(j,'job')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('jobs', j.id)}><Trash2 size={16}/></button></td></tr>
+                           <tr key={j.id} className="hover:bg-slate-50">
+                              <td className="p-4 font-bold">{j.title}</td>
+                              <td className="p-4">
+                                 <div className="font-medium text-slate-800">{j.companyName}</div>
+                                 {j.address && <div className="text-xs text-slate-400 truncate max-w-[200px]">{j.address}</div>}
+                              </td>
+                              <td className="p-4 text-slate-600"><Users size={14} className="inline mr-1"/>{j.headcount || '-'}</td>
+                              <td className="p-4 text-green-600 font-bold">{j.wage}</td>
+                              <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>startEdit(j,'job')}><Edit2 size={16}/></button><button onClick={()=>handleDelete('jobs', j.id)}><Trash2 size={16}/></button></td>
+                           </tr>
                         ))}
                      </tbody>
                   </table>
@@ -559,8 +569,8 @@ const AdminDashboard = () => {
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                  {currentView === 'worker-form' ? (
                     <>
+                      {/* ... (Worker Form - ส่วนพนักงาน เหมือนเดิม) ... */}
                       <div className="flex items-center gap-4 border-b pb-4">
-                         {/* ✅ แสดง User ที่ผูกบัญชี */}
                          {workerForm.lineDisplayName ? (
                             <div className="flex items-center gap-3 bg-green-50 p-3 rounded-xl border border-green-100 w-full">
                                {workerForm.linePictureUrl ? <img src={workerForm.linePictureUrl} className="w-12 h-12 rounded-full border-2 border-white shadow-sm"/> : <div className="w-12 h-12 rounded-full bg-green-200 flex items-center justify-center text-green-700"><User size={24}/></div>}
@@ -606,10 +616,61 @@ const AdminDashboard = () => {
                       </div>
                     </>
                  ) : (
-                    <div className="grid md:grid-cols-2 gap-6">
-                       <input className="border p-2 rounded" placeholder="ชื่องาน" value={jobForm.title} onChange={e=>setJobForm({...jobForm, title: e.target.value})}/>
-                       <input className="border p-2 rounded" placeholder="บริษัท" value={jobForm.companyName} onChange={e=>setJobForm({...jobForm, companyName: e.target.value})}/>
-                       <input className="border p-2 rounded" placeholder="ค่าจ้าง" value={jobForm.wage} onChange={e=>setJobForm({...jobForm, wage: e.target.value})}/>
+                    // ✅ JOB FORM (แก้ไขส่วนนี้ใหม่ทั้งหมด)
+                    <div className="space-y-6">
+                       {/* ส่วนที่ 1: ข้อมูลบริษัท */}
+                       <div className="grid md:grid-cols-2 gap-6">
+                          <h3 className="md:col-span-2 font-bold text-slate-700 border-b pb-2 flex items-center"><Building2 size={18} className="mr-2 text-indigo-600"/> ข้อมูลบริษัท</h3>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">ชื่อบริษัท</label>
+                             <input className="w-full border p-2 rounded" placeholder="ระบุชื่อบริษัทลูกค้า" value={jobForm.companyName} onChange={e=>setJobForm({...jobForm, companyName: e.target.value})}/>
+                          </div>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">Google Map / Location</label>
+                             <input className="w-full border p-2 rounded" placeholder="แปะลิงก์ Google Map" value={jobForm.locationUrl} onChange={e=>setJobForm({...jobForm, locationUrl: e.target.value})}/>
+                          </div>
+                          <div className="md:col-span-2">
+                             <label className="text-sm font-bold block mb-1">ที่อยู่บริษัท</label>
+                             <textarea className="w-full border p-2 rounded" rows={2} placeholder="ที่อยู่สถานที่ทำงาน..." value={jobForm.address} onChange={e=>setJobForm({...jobForm, address: e.target.value})}/>
+                          </div>
+                       </div>
+
+                       {/* ส่วนที่ 2: รายละเอียดงาน */}
+                       <div className="grid md:grid-cols-2 gap-6">
+                          <h3 className="md:col-span-2 font-bold text-slate-700 border-b pb-2 flex items-center"><Briefcase size={18} className="mr-2 text-orange-600"/> รายละเอียดงาน</h3>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">ชื่องาน / ตำแหน่ง</label>
+                             <input className="w-full border p-2 rounded" placeholder="เช่น พนักงานฝ่ายผลิต" value={jobForm.title} onChange={e=>setJobForm({...jobForm, title: e.target.value})}/>
+                          </div>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">รายได้ต่อวัน (บาท)</label>
+                             <input className="w-full border p-2 rounded" placeholder="เช่น 450" value={jobForm.wage} onChange={e=>setJobForm({...jobForm, wage: e.target.value})}/>
+                          </div>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">จำนวนที่ต้องการ (คน)</label>
+                             <input className="w-full border p-2 rounded" type="number" placeholder="เช่น 5" value={jobForm.headcount} onChange={e=>setJobForm({...jobForm, headcount: e.target.value})}/>
+                          </div>
+                          <div>
+                             <label className="text-sm font-bold block mb-1">ระยะเวลาจ้างงาน</label>
+                             <input className="w-full border p-2 rounded" placeholder="เช่น 3 เดือน, ประจำ" value={jobForm.duration} onChange={e=>setJobForm({...jobForm, duration: e.target.value})}/>
+                          </div>
+                          <div className="md:col-span-2">
+                             <label className="text-sm font-bold block mb-1">หมายเหตุ / อื่นๆ</label>
+                             <textarea className="w-full border p-2 rounded" rows={3} placeholder="รายละเอียดเพิ่มเติม..." value={jobForm.note} onChange={e=>setJobForm({...jobForm, note: e.target.value})}/>
+                          </div>
+                       </div>
+
+                       {/* ส่วนที่ 3: ทักษะที่ต้องการ */}
+                       <div>
+                          <h3 className="font-bold text-slate-700 border-b pb-2 mb-4 flex items-center"><Wrench size={18} className="mr-2 text-green-600"/> ทักษะที่ต้องการ</h3>
+                          <div className="flex flex-wrap gap-2">
+                             {skillsList.map(s => (
+                                <button key={s} onClick={()=>toggleArrayItem(s,'job','requiredSkills')} className={`px-3 py-1.5 rounded border transition-all ${jobForm.requiredSkills.includes(s)?'bg-orange-600 text-white font-bold shadow-sm':'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                                   {s}
+                                </button>
+                             ))}
+                          </div>
+                       </div>
                     </div>
                  )}
                  <div className="flex justify-end pt-4"><button onClick={currentView==='worker-form'?handleSaveWorker:handleSaveJob} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold">บันทึก</button></div>
