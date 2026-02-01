@@ -196,125 +196,161 @@ const WorkerProfileModal = ({ worker, onClose }) => {
 };
 
 // --- ✅ Added RegistrationView (The missing component) ---
+// --- ✅ RegistrationView (แก้ไข: เพิ่มการแจ้งเตือน Error เมื่อ LIFF เชื่อมต่อไม่ได้) ---
 const RegistrationView = () => {
-  const [formData, setFormData] = useState({ 
-    name: '', phone: '', education: '', skills: [], 
-    idCard: '', address: '', experience: '', refName: '', refPhone: '', 
-    training: '', lineUserId: '', lineDisplayName: '', linePictureUrl: '' 
-  });
-  const [liffState, setLiffState] = useState({ isInit: false, isLoggedIn: false });
-  const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
-  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
-
-  useEffect(() => {
-    const initLiff = async () => {
-      try {
-        await liff.init({ liffId: MY_LIFF_ID });
-        if(liff.isLoggedIn()) {
-          const p = await liff.getProfile();
-          
-          // Check if already registered
-          const q = query(collection(db, 'users'), where('lineUserId', '==', p.userId));
-          const snap = await getDocs(q);
-          if(!snap.empty) {
-             setIsAlreadyRegistered(true);
-             return;
-          }
-
-          setFormData(f => ({...f, lineUserId: p.userId, lineDisplayName: p.displayName, linePictureUrl: p.pictureUrl, name: p.displayName}));
-          setLiffState({ isInit: true, isLoggedIn: true });
-        } else {
-           liff.login();
-        }
-      } catch(e) { console.error('LIFF Error', e); }
-    };
-    initLiff();
-    
-    // Load skills
-    const unsub = onSnapshot(doc(db, 'system_settings', 'config'), d => { 
-        if(d.exists() && d.data().skills) setSkillsList(d.data().skills); 
+    const [formData, setFormData] = useState({ 
+      name: '', phone: '', education: '', skills: [], 
+      idCard: '', address: '', experience: '', refName: '', refPhone: '', 
+      training: '', lineUserId: '', lineDisplayName: '', linePictureUrl: '' 
     });
-    return () => unsub();
-  }, []);
-
-  const handleSubmit = async () => {
-     if(!formData.name || !formData.phone) return alert('กรุณากรอกชื่อและเบอร์โทร');
-     try {
-        await addDoc(collection(db, 'users'), { ...formData, role: 'worker', status: 'pending', registeredAt: serverTimestamp(), source: 'line_oa' });
-        alert('ลงทะเบียนสำเร็จ! เจ้าหน้าที่จะตรวจสอบข้อมูลและติดต่อกลับ');
-        liff.closeWindow();
-     } catch(e) {
-        alert("เกิดข้อผิดพลาด: " + e.message);
-     }
+    const [liffState, setLiffState] = useState({ isInit: false, isLoggedIn: false });
+    const [liffError, setLiffError] = useState(null); // เพิ่มตัวแปรเก็บ Error
+    const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
+    const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+  
+    useEffect(() => {
+      const initLiff = async () => {
+        try {
+          // เริ่มต้นเชื่อมต่อ LINE
+          await liff.init({ liffId: MY_LIFF_ID });
+          
+          // ถ้าเชื่อมต่อสำเร็จ ตรวจสอบสถานะ Login
+          if (liff.isLoggedIn()) {
+            const p = await liff.getProfile();
+            
+            // ตรวจสอบว่าเคยสมัครหรือยัง
+            const q = query(collection(db, 'users'), where('lineUserId', '==', p.userId));
+            const snap = await getDocs(q);
+            if(!snap.empty) {
+               setIsAlreadyRegistered(true);
+               return;
+            }
+  
+            setFormData(f => ({...f, lineUserId: p.userId, lineDisplayName: p.displayName, linePictureUrl: p.pictureUrl, name: p.displayName}));
+            setLiffState({ isInit: true, isLoggedIn: true });
+          } else {
+             // ถ้ายังไม่ Login ให้สั่ง Login
+             liff.login();
+          }
+        } catch (e) { 
+          // ⚠️ ถ้า Error ให้แสดงผลทางหน้าจอ
+          console.error('LIFF Init Error:', e);
+          setLiffError(e.message || "เชื่อมต่อ LINE ไม่สำเร็จ");
+        }
+      };
+  
+      initLiff();
+      
+      // Load skills
+      const unsub = onSnapshot(doc(db, 'system_settings', 'config'), d => { 
+          if(d.exists() && d.data().skills) setSkillsList(d.data().skills); 
+      });
+      return () => unsub();
+    }, []);
+  
+    const handleSubmit = async () => {
+       if(!formData.name || !formData.phone) return alert('กรุณากรอกชื่อและเบอร์โทร');
+       try {
+          await addDoc(collection(db, 'users'), { ...formData, role: 'worker', status: 'pending', registeredAt: serverTimestamp(), source: 'line_oa' });
+          alert('ลงทะเบียนสำเร็จ! เจ้าหน้าที่จะตรวจสอบข้อมูลและติดต่อกลับ');
+          if (liff.isInClient()) {
+              liff.closeWindow();
+          } else {
+              window.location.reload();
+          }
+       } catch(e) {
+          alert("เกิดข้อผิดพลาดในการบันทึก: " + e.message);
+       }
+    };
+  
+    const toggleSkill = (s) => {
+       setFormData(prev => ({
+          ...prev,
+          skills: prev.skills.includes(s) ? prev.skills.filter(x => x !== s) : [...prev.skills, s]
+       }));
+    };
+  
+    // กรณีที่เคยสมัครแล้ว
+    if(isAlreadyRegistered) {
+       return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-6 text-center">
+             <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+                <CheckCircle2 size={64} className="text-green-500 mx-auto mb-4"/>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">คุณลงทะเบียนแล้ว</h2>
+                <p className="text-slate-500">ข้อมูลของคุณอยู่ในระบบเรียบร้อยแล้ว<br/>รอการติดต่อกลับจากเจ้าหน้าที่</p>
+             </div>
+          </div>
+       );
+    }
+  
+    // ⚠️ กรณีเกิด Error (แสดงข้อความสีแดง)
+    if (liffError) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 p-6 text-center">
+              <AlertTriangle size={48} className="text-red-500 mb-4"/>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">เกิดข้อผิดพลาด (LIFF Error)</h3>
+              <div className="bg-white p-4 rounded-xl border border-red-200 text-red-600 text-sm mb-4 break-all">
+                  {liffError}
+              </div>
+              <p className="text-slate-500 text-sm mb-4">
+                  สาเหตุที่เป็นไปได้:<br/>
+                  1. LIFF ID ไม่ถูกต้อง<br/>
+                  2. URL ใน LINE Developer Console ไม่ตรงกับเว็บปัจจุบัน
+              </p>
+              <button onClick={() => window.location.reload()} className="bg-slate-800 text-white px-6 py-2 rounded-lg">ลองใหม่</button>
+          </div>
+      );
+    }
+  
+    // กำลังโหลด
+    if(!liffState.isLoggedIn) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังเชื่อมต่อ LINE...</div>;
+  
+    return (
+       <div className="min-h-screen bg-slate-100 py-10 px-4">
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+             <div className="bg-slate-900 text-white p-6 text-center">
+                <h1 className="text-2xl font-bold">ลงทะเบียนสมัครงาน</h1>
+                <p className="text-slate-400 text-sm mt-1">กรอกข้อมูลเพื่อเริ่มรับงานกับเรา</p>
+             </div>
+             
+             <div className="p-6 space-y-4">
+                <div className="flex items-center justify-center mb-6">
+                   {formData.linePictureUrl ? <img src={formData.linePictureUrl} className="w-20 h-20 rounded-full border-4 border-slate-100 shadow-sm"/> : <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center"><User size={32} className="text-slate-400"/></div>}
+                </div>
+  
+                <div><label className="text-sm font-bold text-slate-700 block mb-1">ชื่อ-นามสกุล</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})}/></div>
+                <div><label className="text-sm font-bold text-slate-700 block mb-1">เบอร์โทรศัพท์</label><input className="w-full border p-3 rounded-xl bg-slate-50" type="tel" value={formData.phone} onChange={e=>setFormData({...formData,phone:e.target.value})}/></div>
+                <div><label className="text-sm font-bold text-slate-700 block mb-1">เลขบัตรประชาชน</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.idCard} onChange={e=>setFormData({...formData,idCard:e.target.value})}/></div>
+                
+                <div>
+                   <label className="text-sm font-bold text-slate-700 block mb-1">วุฒิการศึกษา</label>
+                   <select className="w-full border p-3 rounded-xl bg-slate-50" value={formData.education} onChange={e=>setFormData({...formData,education:e.target.value})}>
+                      <option value="">-- เลือกวุฒิ --</option>
+                      {EDUCATION_LEVELS.map(e=><option key={e} value={e}>{e}</option>)}
+                   </select>
+                </div>
+  
+                <div><label className="text-sm font-bold text-slate-700 block mb-1">ที่อยู่ปัจจุบัน</label><textarea className="w-full border p-3 rounded-xl bg-slate-50" rows={2} value={formData.address} onChange={e=>setFormData({...formData,address:e.target.value})}/></div>
+                
+                <div>
+                   <label className="text-sm font-bold text-slate-700 block mb-2">ทักษะความสามารถ</label>
+                   <div className="flex flex-wrap gap-2">
+                      {skillsList.map(s => (
+                         <button key={s} onClick={()=>toggleSkill(s)} className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${formData.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200'}`}>
+                            {s}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+  
+                <button onClick={handleSubmit} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg mt-4 flex items-center justify-center">
+                   <Save size={20} className="mr-2"/> ยืนยันข้อมูล
+                </button>
+             </div>
+          </div>
+       </div>
+    );
   };
-
-  const toggleSkill = (s) => {
-     setFormData(prev => ({
-        ...prev,
-        skills: prev.skills.includes(s) ? prev.skills.filter(x => x !== s) : [...prev.skills, s]
-     }));
-  };
-
-  if(isAlreadyRegistered) {
-     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-6 text-center">
-           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-              <CheckCircle2 size={64} className="text-green-500 mx-auto mb-4"/>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">คุณลงทะเบียนแล้ว</h2>
-              <p className="text-slate-500">ข้อมูลของคุณอยู่ในระบบเรียบร้อยแล้ว<br/>รอการติดต่อกลับจากเจ้าหน้าที่</p>
-           </div>
-        </div>
-     );
-  }
-
-  if(!liffState.isLoggedIn) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังเชื่อมต่อ LINE...</div>;
-
-  return (
-     <div className="min-h-screen bg-slate-100 py-10 px-4">
-        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-           <div className="bg-slate-900 text-white p-6 text-center">
-              <h1 className="text-2xl font-bold">ลงทะเบียนสมัครงาน</h1>
-              <p className="text-slate-400 text-sm mt-1">กรอกข้อมูลเพื่อเริ่มรับงานกับเรา</p>
-           </div>
-           
-           <div className="p-6 space-y-4">
-              <div className="flex items-center justify-center mb-6">
-                 {formData.linePictureUrl ? <img src={formData.linePictureUrl} className="w-20 h-20 rounded-full border-4 border-slate-100 shadow-sm"/> : <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center"><User size={32} className="text-slate-400"/></div>}
-              </div>
-
-              <div><label className="text-sm font-bold text-slate-700 block mb-1">ชื่อ-นามสกุล</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})}/></div>
-              <div><label className="text-sm font-bold text-slate-700 block mb-1">เบอร์โทรศัพท์</label><input className="w-full border p-3 rounded-xl bg-slate-50" type="tel" value={formData.phone} onChange={e=>setFormData({...formData,phone:e.target.value})}/></div>
-              <div><label className="text-sm font-bold text-slate-700 block mb-1">เลขบัตรประชาชน</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.idCard} onChange={e=>setFormData({...formData,idCard:e.target.value})}/></div>
-              
-              <div>
-                 <label className="text-sm font-bold text-slate-700 block mb-1">วุฒิการศึกษา</label>
-                 <select className="w-full border p-3 rounded-xl bg-slate-50" value={formData.education} onChange={e=>setFormData({...formData,education:e.target.value})}>
-                    <option value="">-- เลือกวุฒิ --</option>
-                    {EDUCATION_LEVELS.map(e=><option key={e} value={e}>{e}</option>)}
-                 </select>
-              </div>
-
-              <div><label className="text-sm font-bold text-slate-700 block mb-1">ที่อยู่ปัจจุบัน</label><textarea className="w-full border p-3 rounded-xl bg-slate-50" rows={2} value={formData.address} onChange={e=>setFormData({...formData,address:e.target.value})}/></div>
-              
-              <div>
-                 <label className="text-sm font-bold text-slate-700 block mb-2">ทักษะความสามารถ</label>
-                 <div className="flex flex-wrap gap-2">
-                    {skillsList.map(s => (
-                       <button key={s} onClick={()=>toggleSkill(s)} className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${formData.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200'}`}>
-                          {s}
-                       </button>
-                    ))}
-                 </div>
-              </div>
-
-              <button onClick={handleSubmit} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg mt-4 flex items-center justify-center">
-                 <Save size={20} className="mr-2"/> ยืนยันข้อมูล
-              </button>
-           </div>
-        </div>
-     </div>
-  );
-};
 
 // --- Dashboard View ---
 const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker }) => {
