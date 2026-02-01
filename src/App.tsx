@@ -15,7 +15,8 @@ import {
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
   UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User,
   DollarSign, Map, File, ChevronRight, Star, Search, Hand, Timer,
-  History, Award, ThumbsUp, XOctagon, Navigation, Flag
+  History, Award, ThumbsUp, XOctagon, Navigation, Flag, CalendarCheck,
+  Megaphone
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -62,6 +63,16 @@ const formatDateTimeThai = (isoString) => {
   return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
 }
 
+// Check if a worker is available today (Logic: timestamp matches today's date)
+const isAvailableToday = (timestamp) => {
+    if (!timestamp) return false;
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const today = new Date();
+    return date.getDate() === today.getDate() && 
+           date.getMonth() === today.getMonth() && 
+           date.getFullYear() === today.getFullYear();
+};
+
 const calculateMatchScore = (worker, job) => {
   let totalCriteria = 0;
   let passedCriteria = 0;
@@ -94,7 +105,8 @@ const StatusBadge = ({ status }) => {
     closed: "bg-slate-100 text-slate-500 border-slate-200", 
     blacklisted: "bg-rose-100 text-rose-700 border-rose-200",
     waiting_confirm: "bg-blue-100 text-blue-700 border-blue-200",
-    completed: "bg-gray-100 text-gray-600 border-gray-300"
+    completed: "bg-gray-100 text-gray-600 border-gray-300",
+    full: "bg-red-100 text-red-700 border-red-200"
   };
   const label = { 
       active: "พร้อมทำงาน", 
@@ -104,7 +116,8 @@ const StatusBadge = ({ status }) => {
       closed: "ปิดรับสมัคร", 
       blacklisted: "Blacklist", 
       waiting_confirm: "รอพนักงานยืนยัน",
-      completed: "จบงานแล้ว"
+      completed: "จบงานแล้ว",
+      full: "เต็มแล้ว"
   };
   
   return (
@@ -320,6 +333,84 @@ const RegistrationView = () => {
   );
 };
 
+// --- ✅ NEW Queue View (Check-in System) ---
+const QueueView = ({ onRedirectRegister }) => {
+    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [isCheckedIn, setIsCheckedIn] = useState(false);
+
+    useEffect(() => {
+        const init = async () => {
+            try {
+                await liff.init({ liffId: MY_LIFF_ID });
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+                const profile = await liff.getProfile();
+                const q = query(collection(db, 'users'), where('lineUserId', '==', profile.userId));
+                const snap = await getDocs(q);
+                if (snap.empty) { onRedirectRegister(); return; }
+                
+                const userData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+                setUser(userData);
+                setIsCheckedIn(isAvailableToday(userData.availableDate));
+                setLoading(false);
+            } catch(e) { console.error(e); }
+        };
+        init();
+    }, []);
+
+    const handleCheckIn = async () => {
+        if(!user) return;
+        try {
+            const timestamp = serverTimestamp();
+            await updateDoc(doc(db, 'users', user.id), {
+                availableDate: timestamp, // Stamp today's date
+                isAvailable: true 
+            });
+            setIsCheckedIn(true);
+            alert("✅ ลงชื่อพร้อมทำงานวันนี้เรียบร้อย!");
+        } catch(e) { alert("Error: "+e.message); }
+    };
+
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังโหลด...</div>;
+
+    return (
+        <div className="min-h-screen bg-slate-100 pb-10">
+            <div className="bg-slate-900 text-white p-6 rounded-b-3xl shadow-lg mb-6">
+                <h1 className="text-xl font-bold flex items-center"><CalendarCheck className="mr-2 text-yellow-400"/> เช็คชื่อว่างงาน (Daily Queue)</h1>
+                <div className="text-xs text-slate-400 mt-1">แจ้งแอดมินว่า "วันนี้พร้อมทำงาน"</div>
+            </div>
+
+            <div className="px-6 flex flex-col items-center">
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center w-full max-w-md">
+                    {isCheckedIn ? (
+                        <>
+                            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                                <CheckCircle2 size={48} className="text-green-600"/>
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-2">ลงชื่อเรียบร้อย</h2>
+                            <p className="text-slate-500 mb-6">คุณอยู่ในคิวงานของวันนี้แล้ว<br/>รอแอดมินติดต่อกลับหากมีงานที่เหมาะสม</p>
+                            <div className="text-xs text-slate-400 bg-slate-50 p-3 rounded-lg">
+                                * ระบบจะรีเซ็ตสถานะทุกวัน<br/>พรุ่งนี้ต้องมากดใหม่นะครับ
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Megaphone size={48} className="text-indigo-600"/>
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-800 mb-2">วันนี้ว่างไหมครับ?</h2>
+                            <p className="text-slate-500 mb-6">ถ้าวันนี้คุณว่างและพร้อมรับงานเสริม<br/>กดปุ่มด้านล่างเพื่อแจ้งแอดมินได้เลย</p>
+                            <button onClick={handleCheckIn} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center transition-all active:scale-95">
+                                <Hand size={24} className="mr-2"/> พร้อมทำงานวันนี้
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Dashboard View (Admin) ---
 const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker, onUpdateStatus }) => {
   const activeJobs = jobs.filter(j => {
@@ -328,12 +419,19 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker
      return true;
   });
 
+  // Filter workers available TODAY
+  const workersAvailableToday = workers.filter(w => isAvailableToday(w.availableDate));
+
   const jobsWithMatch = activeJobs.map(job => {
+     // Calculate filled spots (assigned & accepted/waiting)
+     const assignedCount = workers.filter(w => w.assignedJob?.jobId === job.id && w.assignedJob?.status !== 'rejected').length;
+     const isFull = assignedCount >= parseInt(job.headcount);
+     
      const matches = workers
         .map(w => ({ ...w, score: calculateMatchScore(w, job) }))
         .filter(w => w.score > 0)
         .sort((a, b) => b.score - a.score);
-     return { ...job, matches };
+     return { ...job, matches, assignedCount, isFull };
   });
 
   return (
@@ -345,8 +443,8 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker
              <div className="text-xs text-slate-500">ฐานข้อมูลทั้งหมด</div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
-             <div className="text-3xl font-bold text-emerald-600 mb-1">{workers.filter(w=>w.status==='active').length}</div>
-             <div className="text-xs text-slate-500">พร้อมทำงาน</div>
+             <div className="text-3xl font-bold text-emerald-600 mb-1">{workersAvailableToday.length}</div>
+             <div className="text-xs text-slate-500 flex items-center gap-1 font-bold text-emerald-600"><CalendarCheck size={12}/> ว่างงานวันนี้ (Queue)</div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
              <div className="text-3xl font-bold text-indigo-600 mb-1">{activeJobs.length}</div>
@@ -357,6 +455,26 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker
              <div className="text-xs text-slate-500">รอตรวจสอบ</div>
           </div>
        </div>
+
+       {/* ✅ Ready to Work Today Section */}
+       {workersAvailableToday.length > 0 && (
+           <div className="bg-white p-6 rounded-2xl shadow-sm border border-green-200 bg-green-50/30">
+               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><CalendarCheck size={20} className="mr-2 text-green-600"/> คนว่างพร้อมทำงานวันนี้ ({workersAvailableToday.length})</h3>
+               <div className="flex gap-4 overflow-x-auto pb-2">
+                   {workersAvailableToday.map(w => (
+                       <div key={w.id} onClick={()=>onViewWorker(w)} className="min-w-[200px] bg-white p-3 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-green-400 transition-all flex items-center gap-3">
+                           <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
+                               {w.linePictureUrl ? <img src={w.linePictureUrl} className="w-full h-full object-cover"/> : <User size={20} className="text-slate-400"/>}
+                           </div>
+                           <div>
+                               <div className="font-bold text-sm truncate w-24">{w.name}</div>
+                               <div className="text-xs text-slate-500">{w.phone}</div>
+                           </div>
+                       </div>
+                   ))}
+               </div>
+           </div>
+       )}
 
        {/* Job Matching Section */}
        <div>
@@ -370,14 +488,18 @@ const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker
              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {jobsWithMatch.map(job => (
                    <div key={job.id} 
-                        className="bg-white rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col"
+                        className={`bg-white rounded-2xl shadow-sm border transition-all cursor-pointer overflow-hidden flex flex-col ${job.isFull ? 'border-slate-200 opacity-70' : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'}`}
                         onClick={() => onJobClick(job)} 
                    >
                       <div className="p-5 flex-1">
                          <div className="flex justify-between items-start mb-2">
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
-                               รับ {job.headcount} อัตรา
-                            </span>
+                            {job.isFull ? (
+                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide flex items-center"><XCircle size={10} className="mr-1"/> เต็มแล้ว (FULL)</span>
+                            ) : (
+                                <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                                   รับ {job.headcount} | ว่าง {job.headcount - job.assignedCount}
+                                </span>
+                            )}
                             <span className="text-[10px] text-slate-400">
                                หมดเขต: {formatDateThai(job.endDate)}
                             </span>
@@ -603,7 +725,7 @@ const MyJobsView = ({ onRedirectRegister }) => {
    );
 }
 
-// ... ClientJobSearchNew ...
+// --- ClientJobSearchNew (Filtered: Hide Full Jobs) ---
 const ClientJobSearchNew = ({ onRedirectRegister }) => {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
@@ -613,6 +735,8 @@ const ClientJobSearchNew = ({ onRedirectRegister }) => {
 
   useEffect(() => {
     let unsubJobs = () => {};
+    let unsubWorkers = () => {};
+
     const init = async () => {
       try {
         await liff.init({ liffId: MY_LIFF_ID });
@@ -623,21 +747,48 @@ const ClientJobSearchNew = ({ onRedirectRegister }) => {
         if (userSnap.empty) { onRedirectRegister(); return; }
         const userData = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
         setCurrentUser(userData);
+
+        // Fetch All Workers needed to calculate 'Full' status (Realtime)
+        // Note: For small scale this is fine. For large scale, we should aggregate count in job doc.
+        let allWorkers = [];
+        
+        unsubWorkers = onSnapshot(query(collection(db, 'users')), (snap) => {
+            allWorkers = snap.docs.map(d => d.data());
+            // Trigger job filter refresh when workers update
+            // (But easier to just fetch workers first then subscribe jobs)
+        });
+
         const qJobs = query(collection(db, 'jobs'), orderBy('createdAt', 'desc'));
         unsubJobs = onSnapshot(qJobs, (snapshot) => {
            const jobsData = snapshot.docs
-              .map(d => ({ id: d.id, ...d.data() }))
-              .filter(j => j.status === 'open' && (!j.endDate || new Date(j.endDate) >= new Date().setHours(0,0,0,0)))
+              .map(d => {
+                  const data = d.data();
+                  // Calculate Assigned Count
+                  const assignedCount = allWorkers.filter(w => w.assignedJob?.jobId === d.id && w.assignedJob?.status !== 'rejected').length;
+                  return { id: d.id, ...data, assignedCount };
+              })
+              .filter(j => {
+                  // Filter 1: Open and Not Expired
+                  if (j.status !== 'open') return false;
+                  if (j.endDate && new Date(j.endDate) < new Date().setHours(0,0,0,0)) return false;
+                  
+                  // Filter 2: NOT FULL
+                  if (j.assignedCount >= parseInt(j.headcount)) return false; 
+                  
+                  return true;
+              })
               .map(job => ({ ...job, score: calculateMatchScore(userData, job) }))
               .filter(job => job.score > 0)
               .sort((a, b) => b.score - a.score);
+
            setMatchedJobs(jobsData);
            setLoading(false);
         });
+
       } catch (err) { console.error(err); alert("เกิดข้อผิดพลาด"); setLoading(false); }
     };
     init();
-    return () => unsubJobs();
+    return () => { unsubJobs(); if(unsubWorkers) unsubWorkers(); };
   }, []);
 
   const handleApplyJob = async (job) => {
@@ -667,7 +818,7 @@ const ClientJobSearchNew = ({ onRedirectRegister }) => {
        </div>
        <div className="p-4 space-y-4">
           {matchedJobs.length === 0 ? (
-             <div className="text-center py-10 text-slate-400"><Search size={48} className="mx-auto mb-2 opacity-50"/><p>ยังไม่มีงานที่ตรงกับคุณในขณะนี้</p></div>
+             <div className="text-center py-10 text-slate-400"><Search size={48} className="mx-auto mb-2 opacity-50"/><p>ยังไม่มีงานที่ตรงกับคุณ หรือ งานเต็มหมดแล้ว</p></div>
           ) : (
              matchedJobs.map(job => {
                 const appliedCount = job.interestedCandidates?.length || 0;
@@ -1069,6 +1220,7 @@ export default function App() {
     if (mode === 'register') setViewMode('register');
     else if (mode === 'jobs') setViewMode('jobs');
     else if (mode === 'myjobs') setViewMode('myjobs');
+    else if (mode === 'queue') setViewMode('queue'); // ✅ เพิ่ม Mode: Queue
     else if (isLineApp) setViewMode('register');
     else setViewMode('admin');
 
@@ -1104,6 +1256,7 @@ export default function App() {
       {viewMode === 'register' && <RegistrationView />}
       {viewMode === 'jobs' && <ClientJobSearchNew onRedirectRegister={() => setViewMode('register')} />}
       {viewMode === 'myjobs' && <MyJobsView onRedirectRegister={() => setViewMode('register')} />}
+      {viewMode === 'queue' && <QueueView onRedirectRegister={() => setViewMode('register')} />}
     </>
   );
 }
