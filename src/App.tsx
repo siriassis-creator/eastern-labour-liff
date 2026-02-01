@@ -62,14 +62,6 @@ const formatDateTimeThai = (isoString) => {
   return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
 }
 
-const calculateDurationDays = (start, end) => {
-  const s = new Date(start);
-  const e = new Date(end);
-  const diffTime = Math.abs(e - s);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-  return diffDays;
-}
-
 const calculateMatchScore = (worker, job) => {
   let totalCriteria = 0;
   let passedCriteria = 0;
@@ -100,9 +92,10 @@ const StatusBadge = ({ status }) => {
     pending: "bg-orange-100 text-orange-700 border-orange-200",
     inactive: "bg-slate-100 text-slate-600 border-slate-200",
     closed: "bg-slate-100 text-slate-500 border-slate-200", 
-    blacklisted: "bg-rose-100 text-rose-700 border-rose-200"
+    blacklisted: "bg-rose-100 text-rose-700 border-rose-200",
+    waiting_confirm: "bg-blue-100 text-blue-700 border-blue-200"
   };
-  const label = { active: "พร้อมทำงาน", open: "เปิดรับสมัคร", pending: "รอสัมภาษณ์", inactive: "ไม่ว่าง", closed: "ปิดรับสมัคร", blacklisted: "Blacklist" };
+  const label = { active: "พร้อมทำงาน", open: "เปิดรับสมัคร", pending: "รอสัมภาษณ์", inactive: "ไม่ว่าง", closed: "ปิดรับสมัคร", blacklisted: "Blacklist", waiting_confirm: "รอพนักงานยืนยัน" };
   const icons = { active: <CheckCircle2 size={10} />, open: <CheckCircle2 size={10} />, pending: <Clock size={10} />, blacklisted: <XCircle size={10} />, closed: <XCircle size={10} /> };
 
   return (
@@ -202,7 +195,128 @@ const WorkerProfileModal = ({ worker, onClose }) => {
   );
 };
 
-// ✅ FIX: รับ onAssignWorker เข้ามาให้ถูกต้อง
+// --- ✅ Added RegistrationView (The missing component) ---
+const RegistrationView = () => {
+  const [formData, setFormData] = useState({ 
+    name: '', phone: '', education: '', skills: [], 
+    idCard: '', address: '', experience: '', refName: '', refPhone: '', 
+    training: '', lineUserId: '', lineDisplayName: '', linePictureUrl: '' 
+  });
+  const [liffState, setLiffState] = useState({ isInit: false, isLoggedIn: false });
+  const [skillsList, setSkillsList] = useState(DEFAULT_SKILLS);
+  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+
+  useEffect(() => {
+    const initLiff = async () => {
+      try {
+        await liff.init({ liffId: MY_LIFF_ID });
+        if(liff.isLoggedIn()) {
+          const p = await liff.getProfile();
+          
+          // Check if already registered
+          const q = query(collection(db, 'users'), where('lineUserId', '==', p.userId));
+          const snap = await getDocs(q);
+          if(!snap.empty) {
+             setIsAlreadyRegistered(true);
+             return;
+          }
+
+          setFormData(f => ({...f, lineUserId: p.userId, lineDisplayName: p.displayName, linePictureUrl: p.pictureUrl, name: p.displayName}));
+          setLiffState({ isInit: true, isLoggedIn: true });
+        } else {
+           liff.login();
+        }
+      } catch(e) { console.error('LIFF Error', e); }
+    };
+    initLiff();
+    
+    // Load skills
+    const unsub = onSnapshot(doc(db, 'system_settings', 'config'), d => { 
+        if(d.exists() && d.data().skills) setSkillsList(d.data().skills); 
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSubmit = async () => {
+     if(!formData.name || !formData.phone) return alert('กรุณากรอกชื่อและเบอร์โทร');
+     try {
+        await addDoc(collection(db, 'users'), { ...formData, role: 'worker', status: 'pending', registeredAt: serverTimestamp(), source: 'line_oa' });
+        alert('ลงทะเบียนสำเร็จ! เจ้าหน้าที่จะตรวจสอบข้อมูลและติดต่อกลับ');
+        liff.closeWindow();
+     } catch(e) {
+        alert("เกิดข้อผิดพลาด: " + e.message);
+     }
+  };
+
+  const toggleSkill = (s) => {
+     setFormData(prev => ({
+        ...prev,
+        skills: prev.skills.includes(s) ? prev.skills.filter(x => x !== s) : [...prev.skills, s]
+     }));
+  };
+
+  if(isAlreadyRegistered) {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-6 text-center">
+           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+              <CheckCircle2 size={64} className="text-green-500 mx-auto mb-4"/>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">คุณลงทะเบียนแล้ว</h2>
+              <p className="text-slate-500">ข้อมูลของคุณอยู่ในระบบเรียบร้อยแล้ว<br/>รอการติดต่อกลับจากเจ้าหน้าที่</p>
+           </div>
+        </div>
+     );
+  }
+
+  if(!liffState.isLoggedIn) return <div className="min-h-screen flex items-center justify-center bg-slate-100 text-slate-500"><Activity className="animate-spin mr-2"/> กำลังเชื่อมต่อ LINE...</div>;
+
+  return (
+     <div className="min-h-screen bg-slate-100 py-10 px-4">
+        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+           <div className="bg-slate-900 text-white p-6 text-center">
+              <h1 className="text-2xl font-bold">ลงทะเบียนสมัครงาน</h1>
+              <p className="text-slate-400 text-sm mt-1">กรอกข้อมูลเพื่อเริ่มรับงานกับเรา</p>
+           </div>
+           
+           <div className="p-6 space-y-4">
+              <div className="flex items-center justify-center mb-6">
+                 {formData.linePictureUrl ? <img src={formData.linePictureUrl} className="w-20 h-20 rounded-full border-4 border-slate-100 shadow-sm"/> : <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center"><User size={32} className="text-slate-400"/></div>}
+              </div>
+
+              <div><label className="text-sm font-bold text-slate-700 block mb-1">ชื่อ-นามสกุล</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.name} onChange={e=>setFormData({...formData,name:e.target.value})}/></div>
+              <div><label className="text-sm font-bold text-slate-700 block mb-1">เบอร์โทรศัพท์</label><input className="w-full border p-3 rounded-xl bg-slate-50" type="tel" value={formData.phone} onChange={e=>setFormData({...formData,phone:e.target.value})}/></div>
+              <div><label className="text-sm font-bold text-slate-700 block mb-1">เลขบัตรประชาชน</label><input className="w-full border p-3 rounded-xl bg-slate-50" value={formData.idCard} onChange={e=>setFormData({...formData,idCard:e.target.value})}/></div>
+              
+              <div>
+                 <label className="text-sm font-bold text-slate-700 block mb-1">วุฒิการศึกษา</label>
+                 <select className="w-full border p-3 rounded-xl bg-slate-50" value={formData.education} onChange={e=>setFormData({...formData,education:e.target.value})}>
+                    <option value="">-- เลือกวุฒิ --</option>
+                    {EDUCATION_LEVELS.map(e=><option key={e} value={e}>{e}</option>)}
+                 </select>
+              </div>
+
+              <div><label className="text-sm font-bold text-slate-700 block mb-1">ที่อยู่ปัจจุบัน</label><textarea className="w-full border p-3 rounded-xl bg-slate-50" rows={2} value={formData.address} onChange={e=>setFormData({...formData,address:e.target.value})}/></div>
+              
+              <div>
+                 <label className="text-sm font-bold text-slate-700 block mb-2">ทักษะความสามารถ</label>
+                 <div className="flex flex-wrap gap-2">
+                    {skillsList.map(s => (
+                       <button key={s} onClick={()=>toggleSkill(s)} className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${formData.skills.includes(s) ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200'}`}>
+                          {s}
+                       </button>
+                    ))}
+                 </div>
+              </div>
+
+              <button onClick={handleSubmit} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg mt-4 flex items-center justify-center">
+                 <Save size={20} className="mr-2"/> ยืนยันข้อมูล
+              </button>
+           </div>
+        </div>
+     </div>
+  );
+};
+
+// --- Dashboard View ---
 const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker }) => {
   const activeJobs = jobs.filter(j => {
      if (j.status !== 'open') return false;
@@ -650,7 +764,6 @@ const AdminDashboard = () => {
   const handleAddConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayUnion(item) });
   const handleDelConfig = async (type, item) => updateDoc(doc(db, 'system_settings', 'config'), { [type]: arrayRemove(item) });
 
-  // ✅ ฟังก์ชันจ่ายงานแบบใหม่: อัปเดตสถานะ User เป็น "รอการตอบรับ"
   const handleAssignWorker = async (worker, job) => {
     if (!confirm(`ยืนยันการจ่ายงาน "${job.title}" ให้กับคุณ ${worker.name}?\nผู้สมัครจะต้องกด 'ตอบรับ' ใน Line OA อีกครั้ง`)) return;
     try {
