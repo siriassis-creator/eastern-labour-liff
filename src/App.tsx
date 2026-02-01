@@ -15,7 +15,7 @@ import {
   FileText, UserPlus, PlusCircle, TrendingUp, Activity, Clock, 
   UserCheck, Smartphone, Send, Check, LogIn, BookOpen, User,
   DollarSign, Map, File, ChevronRight, Star, Search, Hand, Timer,
-  History, Award, ThumbsUp, XOctagon, Navigation
+  History, Award, ThumbsUp, XOctagon, Navigation, Flag
 } from 'lucide-react';
 
 // --- ⚠️ ใส่รหัส LIFF ID ของคุณตรงนี้ ---
@@ -93,9 +93,19 @@ const StatusBadge = ({ status }) => {
     inactive: "bg-slate-100 text-slate-600 border-slate-200",
     closed: "bg-slate-100 text-slate-500 border-slate-200", 
     blacklisted: "bg-rose-100 text-rose-700 border-rose-200",
-    waiting_confirm: "bg-blue-100 text-blue-700 border-blue-200"
+    waiting_confirm: "bg-blue-100 text-blue-700 border-blue-200",
+    completed: "bg-gray-100 text-gray-600 border-gray-300"
   };
-  const label = { active: "พร้อมทำงาน", open: "เปิดรับสมัคร", pending: "รอสัมภาษณ์", inactive: "ไม่ว่าง", closed: "ปิดรับสมัคร", blacklisted: "Blacklist", waiting_confirm: "รอพนักงานยืนยัน" };
+  const label = { 
+      active: "พร้อมทำงาน", 
+      open: "เปิดรับสมัคร", 
+      pending: "รอสัมภาษณ์", 
+      inactive: "ไม่ว่าง", 
+      closed: "ปิดรับสมัคร", 
+      blacklisted: "Blacklist", 
+      waiting_confirm: "รอพนักงานยืนยัน",
+      completed: "จบงานแล้ว"
+  };
   
   return (
     <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${styles[status] || styles.inactive} flex items-center justify-center w-full min-w-[80px] gap-1 shadow-sm`}>
@@ -211,8 +221,6 @@ const RegistrationView = () => {
         await liff.init({ liffId: MY_LIFF_ID });
         if (liff.isLoggedIn()) {
           const p = await liff.getProfile();
-          // Query Firestore only AFTER auth is handled by App main component
-          // But here we might check if user already exists
           const q = query(collection(db, 'users'), where('lineUserId', '==', p.userId));
           const snap = await getDocs(q);
           if(!snap.empty) {
@@ -230,8 +238,6 @@ const RegistrationView = () => {
       }
     };
     initLiff();
-    
-    // Load skills
     const unsub = onSnapshot(doc(db, 'system_settings', 'config'), d => { 
         if(d.exists() && d.data().skills) setSkillsList(d.data().skills); 
     });
@@ -314,8 +320,8 @@ const RegistrationView = () => {
   );
 };
 
-// --- Dashboard View ---
-const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker }) => {
+// --- Dashboard View (Admin) ---
+const DashboardView = ({ workers, jobs, onJobClick, onViewWorker, onAssignWorker, onUpdateStatus }) => {
   const activeJobs = jobs.filter(j => {
      if (j.status !== 'open') return false;
      if (j.endDate && new Date(j.endDate) < new Date().setHours(0,0,0,0)) return false;
@@ -425,7 +431,7 @@ const ReportsView = ({ workers, jobs }) => (
   </div>
 );
 
-// --- MyJobsView ---
+// --- MyJobsView (Updated: Complete Job Button + Theme) ---
 const MyJobsView = ({ onRedirectRegister }) => {
    const [loading, setLoading] = useState(true);
    const [user, setUser] = useState(null);
@@ -472,29 +478,19 @@ const MyJobsView = ({ onRedirectRegister }) => {
    const handleResponse = async (status, job) => {
       if (!user) return;
       try {
+         // Update user assigned job status
          await updateDoc(doc(db, 'users', user.id), {
             'assignedJob.status': status,
             'assignedJob.updatedAt': new Date().toISOString()
          });
 
          if (status === 'accepted') {
-            if (liff.isInClient()) {
-               await liff.sendMessages([
-                  {
-                     type: "text",
-                     text: `✅ ยืนยันรับงานเรียบร้อย\n\n📌 งาน: ${job.title}\n🏢 บริษัท: ${job.companyName}\n📅 วันที่: ${formatDateThai(job.startDate)}\n📍 สถานที่: ${job.address}\n\nกรุณาไปให้ตรงเวลา ขอบคุณครับ`
-                  },
-                  job.locationUrl ? {
-                     type: "location",
-                     title: job.companyName,
-                     address: job.address,
-                     latitude: 13.7563, 
-                     longitude: 100.5018 
-                  } : null
-               ].filter(Boolean));
-            }
-            alert("ยืนยันรับงานแล้ว! ระบบได้ส่งข้อมูลเข้าแชทของคุณแล้ว");
-         } else {
+            if (liff.isInClient()) liff.sendMessages([{ type: "text", text: `✅ ยืนยันรับงาน: ${job.title}\nวันที่: ${formatDateThai(job.startDate)}` }]);
+            alert("ยืนยันรับงานเรียบร้อย");
+         } else if (status === 'completed') {
+            if (liff.isInClient()) liff.sendMessages([{ type: "text", text: `🏁 จบงานเรียบร้อย: ${job.title}` }]);
+            alert("บันทึกจบงานเรียบร้อย ขอบคุณครับ");
+         } else if (status === 'rejected') {
             await updateDoc(doc(db, 'users', user.id), { assignedJob: null });
             alert("ปฏิเสธงานเรียบร้อย");
          }
@@ -514,77 +510,100 @@ const MyJobsView = ({ onRedirectRegister }) => {
             {assignedJobs.length === 0 ? (
                <div className="text-center py-10 text-slate-400 bg-white rounded-2xl border border-dashed"><Search size={48} className="mx-auto mb-2 opacity-50"/><p>ยังไม่มีงานที่ได้รับมอบหมาย</p></div>
             ) : (
-               assignedJobs.map(job => (
-                  <div key={job.id} className="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-200">
-                     <div className={`p-4 text-white flex justify-between items-center ${job.assignStatus === 'accepted' ? 'bg-green-600' : 'bg-indigo-600'}`}>
-                        <div className="font-bold text-lg">{job.assignStatus === 'accepted' ? 'CONFIRMED' : 'JOB OFFER'}</div>
-                        <div className="bg-white/20 px-2 py-1 rounded text-xs font-mono">ID: {job.id.slice(0,6)}</div>
-                     </div>
+               assignedJobs.map(job => {
+                  const isAccepted = job.assignStatus === 'accepted';
+                  const isCompleted = job.assignStatus === 'completed';
+                  
+                  // Theme Logic: Completed = Gray, Accepted = Green, Waiting = Indigo
+                  const headerColor = isCompleted ? 'bg-slate-500' : (isAccepted ? 'bg-green-600' : 'bg-indigo-600');
+                  const headerText = isCompleted ? 'JOB COMPLETED' : (isAccepted ? 'CONFIRMED' : 'JOB OFFER');
 
-                     <div className="p-6 space-y-4">
-                        <div className="text-center pb-4 border-b border-dashed border-slate-300">
-                           <h2 className="text-2xl font-bold text-slate-800 mb-1">{job.title}</h2>
-                           <div className="text-slate-500 font-medium flex items-center justify-center"><Building2 size={16} className="mr-2"/> {job.companyName}</div>
+                  return (
+                    <div key={job.id} className={`bg-white rounded-2xl shadow-lg overflow-hidden border ${isCompleted ? 'border-slate-300 grayscale' : 'border-slate-200'}`}>
+                        <div className={`p-4 text-white flex justify-between items-center ${headerColor}`}>
+                            <div className="font-bold text-lg">{headerText}</div>
+                            <div className="bg-white/20 px-2 py-1 rounded text-xs font-mono">ID: {job.id.slice(0,6)}</div>
                         </div>
 
-                        <div className="space-y-3">
-                           <div className="flex items-start gap-3">
-                              <Calendar className="text-indigo-500 shrink-0 mt-0.5" size={20}/>
-                              <div>
-                                 <div className="text-xs text-slate-400 font-bold uppercase">Date & Time</div>
-                                 <div className="text-slate-800 font-medium">{formatDateThai(job.startDate)} - {formatDateThai(job.endDate)}</div>
-                              </div>
-                           </div>
-                           <div className="flex items-start gap-3">
-                              <DollarSign className="text-green-600 shrink-0 mt-0.5" size={20}/>
-                              <div>
-                                 <div className="text-xs text-slate-400 font-bold uppercase">Wage</div>
-                                 <div className="text-slate-800 font-medium">{job.wage} บาท / วัน</div>
-                              </div>
-                           </div>
-                           <div className="flex items-start gap-3">
-                              <MapPin className="text-red-500 shrink-0 mt-0.5" size={20}/>
-                              <div>
-                                 <div className="text-xs text-slate-400 font-bold uppercase">Location</div>
-                                 <div className="text-slate-800 font-medium mb-1">{job.address}</div>
-                                 {job.locationUrl && (
-                                    <a href={job.locationUrl} target="_blank" className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold inline-flex items-center hover:bg-blue-100">
-                                       <Navigation size={12} className="mr-1"/> แผนที่นำทาง
-                                    </a>
-                                 )}
-                              </div>
-                           </div>
-                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="text-center pb-4 border-b border-dashed border-slate-300">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-1">{job.title}</h2>
+                                <div className="text-slate-500 font-medium flex items-center justify-center"><Building2 size={16} className="mr-2"/> {job.companyName}</div>
+                            </div>
 
-                        <div className="pt-4 mt-2">
-                           {job.assignStatus === 'waiting_confirm' && (
-                              <div className="grid grid-cols-2 gap-3">
-                                 <button onClick={() => handleResponse('rejected', job)} className="py-3 rounded-xl border border-slate-300 text-slate-600 font-bold flex items-center justify-center hover:bg-slate-50">
-                                    <XOctagon size={18} className="mr-2"/> ปฏิเสธ
-                                 </button>
-                                 <button onClick={() => handleResponse('accepted', job)} className="py-3 rounded-xl bg-green-600 text-white font-bold flex items-center justify-center hover:bg-green-700 shadow-lg">
-                                    <ThumbsUp size={18} className="mr-2"/> ตอบรับงาน
-                                 </button>
-                              </div>
-                           )}
-                           {job.assignStatus === 'accepted' && (
-                              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                                 <CheckCircle2 size={32} className="text-green-600 mx-auto mb-2"/>
-                                 <div className="font-bold text-green-800">คุณตอบรับงานนี้แล้ว</div>
-                                 <div className="text-xs text-green-600">กรุณาเตรียมตัวให้พร้อมก่อนเริ่มงาน</div>
-                              </div>
-                           )}
+                            <div className="space-y-3">
+                                <div className="flex items-start gap-3">
+                                <Calendar className="text-indigo-500 shrink-0 mt-0.5" size={20}/>
+                                <div>
+                                    <div className="text-xs text-slate-400 font-bold uppercase">Date & Time</div>
+                                    <div className="text-slate-800 font-medium">{formatDateThai(job.startDate)} - {formatDateThai(job.endDate)}</div>
+                                </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                <DollarSign className="text-green-600 shrink-0 mt-0.5" size={20}/>
+                                <div>
+                                    <div className="text-xs text-slate-400 font-bold uppercase">Wage</div>
+                                    <div className="text-slate-800 font-medium">{job.wage} บาท / วัน</div>
+                                </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                <MapPin className="text-red-500 shrink-0 mt-0.5" size={20}/>
+                                <div>
+                                    <div className="text-xs text-slate-400 font-bold uppercase">Location</div>
+                                    <div className="text-slate-800 font-medium mb-1">{job.address}</div>
+                                    {job.locationUrl && (
+                                        <a href={job.locationUrl} target="_blank" className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold inline-flex items-center hover:bg-blue-100">
+                                            <Navigation size={12} className="mr-1"/> แผนที่นำทาง
+                                        </a>
+                                    )}
+                                </div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 mt-2">
+                                {job.assignStatus === 'waiting_confirm' && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => handleResponse('rejected', job)} className="py-3 rounded-xl border border-slate-300 text-slate-600 font-bold flex items-center justify-center hover:bg-slate-50">
+                                        <XOctagon size={18} className="mr-2"/> ปฏิเสธ
+                                    </button>
+                                    <button onClick={() => handleResponse('accepted', job)} className="py-3 rounded-xl bg-green-600 text-white font-bold flex items-center justify-center hover:bg-green-700 shadow-lg">
+                                        <ThumbsUp size={18} className="mr-2"/> ตอบรับงาน
+                                    </button>
+                                </div>
+                                )}
+                                
+                                {isAccepted && (
+                                    <div className="space-y-3">
+                                        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                                            <CheckCircle2 size={32} className="text-green-600 mx-auto mb-2"/>
+                                            <div className="font-bold text-green-800">กำลังปฏิบัติงาน</div>
+                                            <div className="text-xs text-green-600">กดปุ่มด้านล่างเมื่อทำงานเสร็จสิ้น</div>
+                                        </div>
+                                        <button onClick={() => { if(confirm('ยืนยันว่าทำงานเสร็จแล้ว?')) handleResponse('completed', job) }} className="w-full py-3 rounded-xl bg-slate-800 text-white font-bold flex items-center justify-center hover:bg-slate-900 shadow-lg">
+                                            <Flag size={18} className="mr-2"/> แจ้งจบงาน (Finish Job)
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isCompleted && (
+                                    <div className="bg-slate-100 border border-slate-300 rounded-xl p-4 text-center">
+                                        <Award size={32} className="text-slate-500 mx-auto mb-2"/>
+                                        <div className="font-bold text-slate-700">งานเสร็จสิ้นแล้ว</div>
+                                        <div className="text-xs text-slate-500">ขอบคุณสำหรับการทำงานครับ</div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                     </div>
-                  </div>
-               ))
+                    </div>
+                  );
+               })
             )}
          </div>
       </div>
    );
 }
 
-// ... ClientJobSearchNew (เดิม สำหรับค้นหางานใหม่) ...
+// ... ClientJobSearchNew ...
 const ClientJobSearchNew = ({ onRedirectRegister }) => {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
@@ -733,26 +752,27 @@ const AdminDashboard = () => {
     let unsubJobs = () => {};
     let unsubConfig = () => {};
 
-    // In App component we handle auth, so here we assume auth is ready or we just use snapshots
-    // But since this is a sub-component, it re-renders. 
-    // Ideally we rely on global auth, but this is fine as long as rules allow read.
-    
-    setPermissionError(false);
-    unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker')), 
-      (snap) => {
-         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-         data.sort((a, b) => (b.registeredAt?.seconds || 0) - (a.registeredAt?.seconds || 0));
-         setWorkers(data);
-      }, 
-      (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
-    );
-    unsubJobs = onSnapshot(query(collection(db, 'jobs'), orderBy('createdAt', 'desc')), (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
-      if (doc.exists()) { setSkillsList(doc.data().skills || DEFAULT_SKILLS); setCompaniesList(doc.data().companies || DEFAULT_COMPANIES); } 
-      else { setDoc(doc(db, 'system_settings', 'config'), { skills: DEFAULT_SKILLS, companies: DEFAULT_COMPANIES }); }
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setPermissionError(false);
+        unsubWorkers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'worker')), 
+          (snap) => {
+             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+             data.sort((a, b) => (b.registeredAt?.seconds || 0) - (a.registeredAt?.seconds || 0));
+             setWorkers(data);
+          }, 
+          (err) => { if(err.code === 'permission-denied') setPermissionError(true); }
+        );
+        unsubJobs = onSnapshot(query(collection(db, 'jobs'), orderBy('createdAt', 'desc')), (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        unsubConfig = onSnapshot(doc(db, 'system_settings', 'config'), (doc) => {
+          if (doc.exists()) { setSkillsList(doc.data().skills || DEFAULT_SKILLS); setCompaniesList(doc.data().companies || DEFAULT_COMPANIES); } 
+          else { setDoc(doc(db, 'system_settings', 'config'), { skills: DEFAULT_SKILLS, companies: DEFAULT_COMPANIES }); }
+        });
+      } else {
+        signInAnonymously(auth).catch(err => console.error("Login failed:", err));
+      }
     });
-
-    return () => { unsubWorkers(); unsubJobs(); unsubConfig(); };
+    return () => { authUnsub(); unsubWorkers(); unsubJobs(); unsubConfig(); };
   }, []);
 
   const handleSaveWorker = async () => { try { const payload = { ...workerForm, role: 'worker', updatedAt: serverTimestamp() }; if (editingId) await updateDoc(doc(db, 'users', editingId), payload); else await addDoc(collection(db, 'users'), { ...payload, registeredAt: serverTimestamp(), source: 'office' }); goBack(); } catch (e) { alert('Error: ' + e.message); } };
@@ -764,16 +784,22 @@ const AdminDashboard = () => {
   const handleAssignWorker = async (worker, job) => {
     if (!confirm(`ยืนยันการจ่ายงาน "${job.title}" ให้กับคุณ ${worker.name}?\nผู้สมัครจะต้องกด 'ตอบรับ' ใน Line OA อีกครั้ง`)) return;
     try {
-       // อัปเดต User ว่ามีงานที่ได้รับมอบหมายแล้ว (รอ Confirm)
        await updateDoc(doc(db, 'users', worker.id), {
           assignedJob: {
              jobId: job.id,
-             status: 'waiting_confirm', // รอการตอบรับจากพนักงาน
+             status: 'waiting_confirm', 
              assignedAt: new Date().toISOString()
           }
        });
-       alert(`จ่ายงานสำเร็จ!\nกรุณาแจ้งให้คุณ ${worker.name} กดดูเมนู 'งานของฉัน' เพื่อตอบรับงาน`);
+       alert(`จ่ายงานสำเร็จ!`);
     } catch (e) { alert('เกิดข้อผิดพลาด: ' + e.message); }
+  };
+
+  const handleUpdateStatus = async (workerId, newStatus) => {
+      if(!confirm('ยืนยันการอัปเดตสถานะ?')) return;
+      try {
+          await updateDoc(doc(db, 'users', workerId), { 'assignedJob.status': newStatus });
+      } catch(e) { alert('Error: ' + e.message); }
   };
 
   const goBack = () => {
@@ -950,17 +976,33 @@ const AdminDashboard = () => {
                                  selectedJob.interestedCandidates
                                     .sort((a,b) => new Date(a.appliedAt) - new Date(b.appliedAt))
                                     .map((candidate, idx) => {
-                                       // Find full worker object to show details
                                        const fullWorker = workers.find(w => w.id === candidate.workerId) || candidate;
+                                       
+                                       // Check if this worker is assigned to THIS job
+                                       const assignedData = fullWorker.assignedJob;
+                                       const isAssignedToThisJob = assignedData?.jobId === selectedJob.id;
+                                       const jobStatus = isAssignedToThisJob ? assignedData.status : null;
+
                                        return (
-                                          <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-orange-300 transition-all group">
+                                          <div key={idx} className={`bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4 transition-all group ${isAssignedToThisJob ? 'border-green-300 bg-green-50/50' : 'border-slate-200'}`}>
                                              <div className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-700 font-bold rounded-full text-sm shrink-0">#{idx+1}</div>
                                              <div className="flex-1 cursor-pointer" onClick={() => setViewingWorker(fullWorker)}>
                                                 <div className="font-bold text-slate-800 hover:text-indigo-600 hover:underline">{candidate.name}</div>
                                                 <div className="text-xs text-slate-400 flex items-center gap-2"><Timer size={12}/> กดเมื่อ: {formatDateTimeThai(candidate.appliedAt)}</div>
                                              </div>
-                                             {/* ✅ ปุ่มจ่ายงาน (Assign) */}
-                                             <button onClick={() => handleAssignWorker(fullWorker, selectedJob)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 flex items-center shadow-sm"><CheckCircle2 size={14} className="mr-2"/> จ่ายงาน</button>
+                                             
+                                             {/* ✅ Admin Action Buttons */}
+                                             {isAssignedToThisJob ? (
+                                                 <div className="flex flex-col items-end gap-1">
+                                                     <StatusBadge status={jobStatus} />
+                                                     {jobStatus === 'accepted' && (
+                                                         <button onClick={() => handleUpdateStatus(fullWorker.id, 'completed')} className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded flex items-center hover:bg-black"><Flag size={10} className="mr-1"/> กดจบงาน</button>
+                                                     )}
+                                                 </div>
+                                             ) : (
+                                                 <button onClick={() => handleAssignWorker(fullWorker, selectedJob)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 flex items-center shadow-sm"><CheckCircle2 size={14} className="mr-2"/> จ่ายงาน</button>
+                                             )}
+                                             
                                              <a href={`tel:${candidate.phone}`} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 flex items-center"><Phone size={14} className="mr-2"/> โทร</a>
                                           </div>
                                        )
@@ -968,18 +1010,36 @@ const AdminDashboard = () => {
                               ) : <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-dashed"><Hand size={32} className="mx-auto mb-2 opacity-50"/>ยังไม่มีคนกดสนใจงานนี้</div>
                            ) : (
                               selectedJob.matches.length > 0 ? (
-                                 selectedJob.matches.map((worker) => (
-                                    <div key={worker.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 hover:border-indigo-300 transition-all">
-                                       <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm border-2 shrink-0 ${worker.score >= 80 ? 'border-green-200 bg-green-50 text-green-700' : 'border-orange-200 bg-orange-50 text-orange-700'}`}>{worker.score}%</div>
-                                       <div className="flex-1 cursor-pointer" onClick={() => setViewingWorker(worker)}>
-                                          <div className="font-bold text-slate-800 hover:text-indigo-600 hover:underline">{worker.name}</div>
-                                          <div className="text-xs text-slate-500">{worker.education} • {worker.skills?.join(', ')}</div>
-                                       </div>
-                                       {/* ✅ ปุ่มจ่ายงาน (Assign) */}
-                                       <button onClick={() => handleAssignWorker(worker, selectedJob)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 flex items-center shadow-sm"><CheckCircle2 size={14} className="mr-2"/> จ่ายงาน</button>
-                                       <a href={`tel:${worker.phone}`} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 flex items-center"><Phone size={14} className="mr-2"/> โทร</a>
-                                    </div>
-                                 ))
+                                 selectedJob.matches.map((worker) => {
+                                    // Check status for matches too
+                                    const assignedData = worker.assignedJob;
+                                    const isAssignedToThisJob = assignedData?.jobId === selectedJob.id;
+                                    const jobStatus = isAssignedToThisJob ? assignedData.status : null;
+
+                                    return (
+                                        <div key={worker.id} className={`bg-white p-4 rounded-xl border shadow-sm flex items-center gap-4 transition-all ${isAssignedToThisJob ? 'border-green-300 bg-green-50/50' : 'border-slate-200'}`}>
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm border-2 shrink-0 ${worker.score >= 80 ? 'border-green-200 bg-green-50 text-green-700' : 'border-orange-200 bg-orange-50 text-orange-700'}`}>{worker.score}%</div>
+                                            <div className="flex-1 cursor-pointer" onClick={() => setViewingWorker(worker)}>
+                                                <div className="font-bold text-slate-800 hover:text-indigo-600 hover:underline">{worker.name}</div>
+                                                <div className="text-xs text-slate-500">{worker.education} • {worker.skills?.join(', ')}</div>
+                                            </div>
+                                            
+                                            {/* ✅ Admin Action Buttons */}
+                                            {isAssignedToThisJob ? (
+                                                 <div className="flex flex-col items-end gap-1">
+                                                     <StatusBadge status={jobStatus} />
+                                                     {jobStatus === 'accepted' && (
+                                                         <button onClick={() => handleUpdateStatus(worker.id, 'completed')} className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded flex items-center hover:bg-black"><Flag size={10} className="mr-1"/> กดจบงาน</button>
+                                                     )}
+                                                 </div>
+                                             ) : (
+                                                 <button onClick={() => handleAssignWorker(worker, selectedJob)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 flex items-center shadow-sm"><CheckCircle2 size={14} className="mr-2"/> จ่ายงาน</button>
+                                             )}
+
+                                            <a href={`tel:${worker.phone}`} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 flex items-center"><Phone size={14} className="mr-2"/> โทร</a>
+                                        </div>
+                                    );
+                                 })
                               ) : <div className="text-center py-10 text-slate-400 bg-white rounded-xl border border-dashed"><Star size={32} className="mx-auto mb-2 opacity-50"/>ไม่มีคนที่ตรงเงื่อนไข</div>
                            )}
                         </div>
